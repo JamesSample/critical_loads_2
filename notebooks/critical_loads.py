@@ -59,7 +59,10 @@ def add_dep_series(qgrid, eng):
                eng,
                'deposition',
                if_exists='append',
-               index=False)
+               index=False,
+               method='multi',
+               chunksize=1000,
+              )
     
     print('%s new row(s) added successfully.' % len(df2))
     
@@ -128,7 +131,10 @@ def upload_nilu_0_1deg_dep_data(data_fold, eng, series_id):
               con=eng, 
               schema='deposition', 
               if_exists='append', 
-              index=False)
+              index=False,
+              method='multi',
+              chunksize=1000,
+             )
     
     print ('%s new rows added successfully.' % len(df))
     
@@ -746,7 +752,10 @@ def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, noda
                   eng,
                   'vegetation',
                   if_exists='append',
-                  index=False)    
+                  index=False,
+                  method='multi',
+                  chunksize=1000,
+                 )    
     
     return gdf
 
@@ -846,7 +855,10 @@ def exceedance_stats_per_land_use_class(ex_tif_bool, veg_tif, ser_id, eng, write
                   eng,
                   'vegetation',
                   if_exists='append',
-                  index=False)    
+                  index=False,
+                  method='multi',
+                  chunksize=1000,
+                 )    
     
     return df
 
