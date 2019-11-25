@@ -340,14 +340,72 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type,
     out_ras = None
     shp_ds = None
 
-def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ser_id):
+def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
+    """ Reclassify categorical values in a raster using a mapping
+        in a dataframe. The dataframe index must contain the classes
+        in in_tif and the 'reclass_col' must specify the new classes.
+        
+        Only cells with value=1 in 'mask_tif' are written to output.
+
+    Args:
+        in_tif:      Str. Raw path to input raster
+        mask_tif:    Str. Raw path to mask grid defining land area
+        out_tif:     Str. Raw path to .tif file to create
+        reclass_df:  DataFrame. Reclassification table
+        reclass_col: Str. Name of column with new raster values
+        ndv:         Int. Value to use as NoData in the new raster
+        
+    Returns:
+        None. A new raster is saved.
+    """
+    import gdal
+    import ogr
+    from gdalconst import GA_ReadOnly as GA_ReadOnly
+    import numpy as np
+    import pandas as pd
+
+    # Open source file, read data
+    src_ds = gdal.Open(in_tif, GA_ReadOnly)
+    assert(src_ds)
+    rb = src_ds.GetRasterBand(1)
+    src_data = rb.ReadAsArray()
+
+    # Open mask, read data
+    mask_ds = gdal.Open(mask_tif, GA_ReadOnly)
+    assert(mask_ds)
+    mb = mask_ds.GetRasterBand(1)
+    mask_data = mb.ReadAsArray()
+    
+    # Reclassify
+    rc_data = src_data.copy()
+    for idx, row in reclass_df.iterrows():
+        rc_data[src_data==idx] = row[reclass_col]
+
+    # Apply mask
+    rc_data[mask_data!=1] = ndv
+    
+    # Write output
+    driver = gdal.GetDriverByName('GTiff')
+    dst_ds = driver.CreateCopy(out_tif, src_ds, 0)
+    out_band = dst_ds.GetRasterBand(1)
+    out_band.SetNoDataValue(ndv)
+    out_band.WriteArray(rc_data)
+
+    # Flush data and close datasets
+    dst_ds = None
+    src_ds = None
+    mask_ds = None
+    
+def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_id):
     """ Calculate exceedances for vegetation.
     
     Args:
-        dep_tif: Str. Raw string to deposition grid
-        cl_tif:  Str. Raw string to critical loads grid
-        ex_tif:  Str. Raw string to exceedance grid to be created
-        ser_id:  Int. Deposition series ID for the data of interest
+        dep_tif:     Str. Raw string to deposition grid
+        cl_tif:      Str. Raw string to critical loads grid
+        ex_tif:      Str. Raw string to exceedance grid to be created
+        ex_tif_bool: Str. Raw string to exceedance grid with Boolean values (i.e. 1
+                     where exceeded and 0 otherwise)
+        ser_id:      Int. Deposition series ID for the data of interest
         
     Returns:
         Summary dataframe.
@@ -405,8 +463,15 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ser_id):
     data_dict['total_area_km2'].append(nor_area)
     data_dict['exceeded_area_km2'].append(ex_area)
     
-    # Write output  
+    # Write exceedance output  
     write_geotiff(ex_grid, ex_tif, cl_tif, -1, gdal.GDT_Int16)
+    
+    # Convert to bool grid
+    ex_grid[ex_grid>0] = 1
+    ex_grid[ex_grid==-1] = 255
+    
+    # Write bool output  
+    write_geotiff(ex_grid, ex_tif_bool, cl_tif, 255, gdal.GDT_Byte)
     del ex_grid
 
     # Build output df
@@ -484,6 +549,21 @@ def bbox_to_pixel_offsets(gt, bbox):
     
     return (x1, y1, xsize, ysize)
 
+def remap_categories(category_map, stats):
+    """ Modified from https://gist.github.com/perrygeo/5667173
+        Original code copyright 2013 Matthew Perry
+    """
+    def lookup(m, k):
+        """ Dict lookup but returns original key if not found
+        """
+        try:
+            return m[k]
+        except KeyError:
+            return k
+
+    return {lookup(category_map, k): v
+            for k, v in stats.items()}
+
 def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, nodata_value=-1, 
                                      global_src_extent=False, categorical=False, category_map=None):
     """ Summarise exceedance values for each 0.1 degree grid cell. 
@@ -530,6 +610,9 @@ def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, noda
     assert(rds)
     rb = rds.GetRasterBand(1)
     rgt = rds.GetGeoTransform()
+    
+    # Get cell size
+    cs = rgt[1]
 
     if nodata_value:
         nodata_value = float(nodata_value)
@@ -642,10 +725,17 @@ def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, noda
     
     # Combine results
     df = pd.DataFrame(stats)
+    df.fillna(0, inplace=True)
     df['series_id'] = ser_id
+    df['fid'] = df.index
     gdf['fid'] = gdf.index
     gdf = gdf.merge(df, on='fid')
-    del gdf['sum'], gdf['n_dep'], gdf['fid']
+    
+    # Calc areas
+    gdf['exceeded_area_km2'] = gdf['exceeded']*cs*cs/1E6 
+    gdf['total_area_km2'] = (gdf['exceeded'] + gdf['not_exceeded'])*cs*cs/1E6
+    gdf['pct_exceeded'] = 100*gdf['exceeded_area_km2']/gdf['total_area_km2']    
+    del gdf['n_dep'], gdf['fid'], gdf['exceeded'], gdf['not_exceeded']
     gdf.dropna(how='any', inplace=True)
     
     if write_to_db:
@@ -659,6 +749,106 @@ def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, noda
                   index=False)    
     
     return gdf
+
+def exceedance_stats_per_land_use_class(ex_tif_bool, veg_tif, ser_id, eng, write_to_db=True, 
+                                        nodata_value=255):
+    """ Summarise exceedance values for each land use class. 
+
+    Args:
+        ex_tif_bool:       Raw str. Path to boolean exceedance raster
+        veg_tif:           Str. Path to vegetation data with same resolution as ex_tif_bool
+        ser_id:            Int. Deposition series ID
+        eng:               Obj. Active database connection object
+        write_to_db:       Bool. If True, results will be written to the database
+        nodata_value:      Float. Value in rasters to treat as NoData
+
+    Returns:
+        GeoDataFrame of land use statistics.
+    """
+    import gdal
+    import ogr
+    import numpy as np
+    import pandas as pd
+    import sys
+    import geopandas as gpd
+    import os
+    from gdalconst import GA_ReadOnly
+    
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+
+    # Read LU table
+    sql = ("SELECT * FROM vegetation.land_class_crit_lds")
+    lu_df = pd.read_sql(sql, eng)    
+    
+    # Read exceedance raster
+    rds = gdal.Open(ex_tif_bool, GA_ReadOnly)
+    assert(rds)
+    rb = rds.GetRasterBand(1)
+
+    if nodata_value:
+        nodata_value = float(nodata_value)
+        rb.SetNoDataValue(nodata_value)
+        
+    ex_array = rb.ReadAsArray()
+
+    # Get cell size
+    rgt = rds.GetGeoTransform()
+    cs = rgt[1]
+
+    # Read vegetation raster
+    rds = gdal.Open(veg_tif, GA_ReadOnly)
+    assert(rds)
+    rb = rds.GetRasterBand(1)
+
+    if nodata_value:
+        nodata_value = float(nodata_value)
+        rb.SetNoDataValue(nodata_value)
+        
+    veg_array = rb.ReadAsArray()
+
+    # Loop through land classes
+    stats = []
+    for idx, row in lu_df.iterrows():
+        # Mask the source data array
+        masked = np.ma.MaskedArray(ex_array,
+                                   mask=np.logical_or(ex_array==nodata_value,
+                                                      veg_array!=row['norut_code']))
+
+        # Get cell counts for each category
+        keys, counts = np.unique(masked.compressed(), return_counts=True)
+        pixel_count = dict(zip([np.asscalar(k) for k in keys],
+                               [np.asscalar(c) for c in counts]))
+
+        feature_stats = dict(pixel_count)
+        feature_stats = remap_categories({1:'exceeded',
+                                          0:'not_exceeded'},
+                                         feature_stats)                     
+        stats.append(feature_stats)
+
+    # Tidy up
+    rds = None  
+    
+    # Combine results
+    df = pd.DataFrame(stats)
+    df.fillna(0, inplace=True)
+    df['norut_code'] = lu_df['norut_code']
+    df['series_id'] = ser_id
+    
+    # Calc areas
+    df['exceeded_area_km2'] = df['exceeded']*cs*cs/1E6 
+    df['total_area_km2'] = (df['exceeded'] + df['not_exceeded'])*cs*cs/1E6
+    df['pct_exceeded'] = 100*df['exceeded_area_km2']/df['total_area_km2']    
+    del df['exceeded'], df['not_exceeded']
+    df.dropna(how='any', inplace=True)
+    
+    if write_to_db:
+        df.to_sql('exceedance_stats_land_class', 
+                  eng,
+                  'vegetation',
+                  if_exists='append',
+                  index=False)    
+    
+    return df
 
 def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
     """ Extracts exceedance statistics for the specified series as a 
@@ -679,17 +869,13 @@ def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
     sql_args={'ser_id':ser_id}
     sql = ("SELECT ST_Transform(b.geom, 32633) AS geom, "
            "  a.cell_id, "
-           "  a.count, "
-           "  a.min, "
-           "  a.mean, "
-           "  a.max, "
-           "  a.std "
+           "  a.exceeded_area_km2, "
+           "  a.total_area_km2, "
+           "  a.pct_exceeded "
            "FROM (SELECT cell_id, "
-           "             count, "
-           "             min, "
-           "             mean, "
-           "             max, "
-           "             std "
+           "             exceeded_area_km2, "
+           "             total_area_km2, "
+           "             pct_exceeded "
            "      FROM vegetation.exceedance_stats_0_1deg_grid "
            "      WHERE series_id = {ser_id}) AS a, "
            "deposition.dep_grid_0_1deg AS b "
