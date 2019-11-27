@@ -173,13 +173,45 @@ def n_deposition_as_gdf_0_1deg(ser_id, eng, shp_path=None):
         gdf.to_file(shp_path)
         
     return gdf
+
+def s_deposition_as_gdf_0_1deg(ser_id, eng, shp_path=None):
+    """ Extracts S deposition data for the specified series as a geodataframe
+        using NILU's 0.1 degree grid. Optionally, the data can be saved as a
+        shapefile.
+        
+    Args: 
+        ser_id:   Int. ID for deposition series of interest
+        eng:      Obj. Active database connection object
+        shp_path: Str. Raw path for shapefile to be created
+        
+    Returns:
+        GeoDataFrame.
+    """
+    import geopandas as gpd
+    
+    # Get dep values
+    sql_args={'ser_id':ser_id}
+    sql = ("SELECT ST_Transform(b.geom, 32633) AS geom, "
+           "  a.cell_id, "
+           "  ROUND(a.s_dep) AS s_dep "
+           "FROM (SELECT cell_id, SUM(value) as s_dep "
+           "      FROM deposition.dep_values_0_1deg_grid "
+           "      WHERE param_id = 4 "
+           "      AND series_id = {ser_id} " 
+           "      GROUP BY cell_id) AS a, "
+           "deposition.dep_grid_0_1deg AS b "
+           "WHERE a.cell_id = b.cell_id").format(**sql_args)
+    gdf = gpd.read_postgis(sql, eng)
+    
+    if shp_path:
+        gdf.to_file(shp_path)
+        
+    return gdf
     
 def create_n_deposition_raster_0_1deg(ser_id, out_tif, snap_tif, eng, ndv=-9999):
     """ Create a raster of N deposition values from a PostGIS vector table. The 
         raster pixel size, extent, alignment etc. will be set from 'snap_ras'.
-        
-        You will be asked to enter a PostGIS user name and password.
-        
+               
         NOTE: The output is a 16-bit signed integer grid.
         
     Args:
@@ -192,28 +224,11 @@ def create_n_deposition_raster_0_1deg(ser_id, out_tif, snap_tif, eng, ndv=-9999)
     Returns:
         None. The grid is saved to the specified path.
     """
-    import gdal
-    import ogr
-    import getpass
-
-    # Get credentials
-    pg_dict = {'dbname':'critical_loads',
-               'host':'host.docker.internal',
-               'port':'25432'}
-    pg_dict['user'] = getpass.getpass(prompt='Username: ')
-    pg_dict['pw'] = getpass.getpass(prompt='Password: ')
-
-    # Build conn_str for GDAL
-    conn_str = ('PG: dbname={dbname}'
-                '    host={host}'
-                '    user={user}'
-                '    password={pw}'
-                '    port={port}').format(**pg_dict)
+    import geopandas as gpd
+    import os
        
-    # Create vector dep grid
     # Get dep values
-    sql = ("CREATE TABLE deposition.temp_ndep AS ( "
-           "SELECT ST_Transform(b.geom, 32633) AS geom, "
+    sql = ("SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
            "  a.cell_id, "
            "  ROUND(a.n_dep) AS n_dep "
            "FROM (SELECT cell_id, SUM(value) as n_dep "
@@ -222,60 +237,60 @@ def create_n_deposition_raster_0_1deg(ser_id, out_tif, snap_tif, eng, ndv=-9999)
            "      AND series_id = %s " 
            "      GROUP BY cell_id) AS a, "
            "deposition.dep_grid_0_1deg AS b "
-           "WHERE a.cell_id = b.cell_id)" % ser_id)
-    eng.execute(sql)
+           "WHERE a.cell_id = b.cell_id" % ser_id)
 
-    # Use 'cell_id' col as primary key
-    sql = ("ALTER TABLE deposition.temp_ndep "
-           "ADD CONSTRAINT temp_ndep_pk "
-           "PRIMARY KEY (cell_id)")
-    eng.execute(sql)
-
-    # Enforce geom type
-    sql = ("ALTER TABLE deposition.temp_ndep "
-           "ALTER COLUMN geom TYPE geometry(MULTIPOLYGON, 32633) "
-           "USING ST_Multi(ST_SetSRID(geom, 32633))")
-    eng.execute(sql)
-
-    # Create sp. index
-    sql = ("CREATE INDEX temp_ndep_spidx "
-           "ON deposition.temp_ndep "
-           "USING GIST (geom)")
-    eng.execute(sql)   
+    gdf = gpd.read_postgis(sql, eng)
     
-    # 1. Create new, empty raster with correct dimensions
-    # Get properties from snap_tif
-    snap_ras = gdal.Open(snap_tif)
-    cols = snap_ras.RasterXSize
-    rows = snap_ras.RasterYSize
-    proj = snap_ras.GetProjection()
-    geotr = snap_ras.GetGeoTransform()
+    # Save temporary file
+    gdf.to_file('temp_ndep.geojson', driver='GeoJSON')
     
-    # Create out_tif
-    driver = gdal.GetDriverByName('GTiff')
-    out_ras = driver.Create(out_tif, cols, rows, 1, gdal.GDT_Int16)
-    out_ras.SetProjection(proj)
-    out_ras.SetGeoTransform(geotr)
+    # Convert
+    vec_to_ras('temp_ndep.geojson', out_tif, snap_tif, 'n_dep', ndv, 'Int16')
     
-    # Fill output with NoData
-    out_ras.GetRasterBand(1).SetNoDataValue(ndv)
-    out_ras.GetRasterBand(1).Fill(ndv)
-
-    # 2. Rasterize vector
-    conn = ogr.Open(conn_str, gdal.GA_ReadOnly)
-    lyr = conn.GetLayer('deposition.temp_ndep')
-
-    gdal.RasterizeLayer(out_ras, [1], lyr, 
-                        options=['ATTRIBUTE=n_dep'])
-
-    # Flush and close
-    snap_ras = None
-    out_ras = None
-    shp_ds = None
+    # Delete temp file
+    os.remove('temp_ndep.geojson') 
     
-    # Drop temp table
-    sql = ("DROP TABLE deposition.temp_ndep")
-    eng.execute(sql)  
+def create_s_deposition_raster_0_1deg(ser_id, out_tif, snap_tif, eng, ndv=-9999):
+    """ Create a raster of S deposition values from a PostGIS vector table. The 
+        raster pixel size, extent, alignment etc. will be set from 'snap_ras'.
+               
+        NOTE: The output is a 16-bit signed integer grid.
+        
+    Args:
+        ser_id:   Int. ID for the data series of interest
+        out_tif:  Str. Raw string for the .tif file to create
+        snap_tif: Str. Raw string for .tif file to use as a 'snap raster'
+        eng:      Obj. Active database connection object
+        ndv:      Int. Value to use for NoData
+        
+    Returns:
+        None. The grid is saved to the specified path.
+    """
+    import geopandas as gpd
+    import os
+       
+    # Get dep values
+    sql = ("SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
+           "  a.cell_id, "
+           "  ROUND(a.s_dep) AS s_dep "
+           "FROM (SELECT cell_id, SUM(value) as s_dep "
+           "      FROM deposition.dep_values_0_1deg_grid "
+           "      WHERE param_id = 4 "
+           "      AND series_id = %s " 
+           "      GROUP BY cell_id) AS a, "
+           "deposition.dep_grid_0_1deg AS b "
+           "WHERE a.cell_id = b.cell_id" % ser_id)
+
+    gdf = gpd.read_postgis(sql, eng)
+    
+    # Save temporary file
+    gdf.to_file('temp_sdep.geojson', driver='GeoJSON')
+    
+    # Convert
+    vec_to_ras('temp_sdep.geojson', out_tif, snap_tif, 's_dep', ndv, 'Int16')
+    
+    # Delete temp file
+    os.remove('temp_sdep.geojson') 
 
 def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type,
                fmt='GTiff'):
@@ -326,7 +341,7 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type,
     
     # Create out_tif
     driver = gdal.GetDriverByName(fmt)
-    out_ras = driver.Create(out_tif, cols, rows, 1, bit_dict[data_type])
+    out_ras = driver.Create(out_tif, cols, rows, 1, bit_dict[data_type], options=['COMPRESS=LZW'])
     out_ras.SetProjection(proj)
     out_ras.SetGeoTransform(geotr)
     
@@ -339,7 +354,8 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type,
     shp_lyr = shp_ds.GetLayer()
 
     gdal.RasterizeLayer(out_ras, [1], shp_lyr, 
-                        options=['ATTRIBUTE=%s' % attrib])
+                        options=['ATTRIBUTE=%s' % attrib,
+                                 'COMPRESS=LZW'])
 
     # Flush and close
     snap_ras = None
@@ -392,7 +408,7 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
     
     # Write output
     driver = gdal.GetDriverByName('GTiff')
-    dst_ds = driver.CreateCopy(out_tif, src_ds, 0)
+    dst_ds = driver.CreateCopy(out_tif, src_ds, 0, options=['COMPRESS=LZW'])
     out_band = dst_ds.GetRasterBand(1)
     out_band.SetNoDataValue(ndv)
     out_band.WriteArray(rc_data)
@@ -519,7 +535,7 @@ def write_geotiff(data, out_tif, snap_tif, ndv, data_type):
     
     # Create out_tif
     driver = gdal.GetDriverByName('GTiff')
-    out_ras = driver.Create(out_tif, cols, rows, 1, data_type)
+    out_ras = driver.Create(out_tif, cols, rows, 1, data_type, options=['COMPRESS=LZW'])
     out_ras.SetProjection(proj)
     out_ras.SetGeoTransform(geotr)
     
@@ -680,7 +696,7 @@ def exceedance_stats_per_0_1deg_cell(ex_tif, ser_id, eng, write_to_db=True, noda
         mem_layer.CreateFeature(feat.Clone())
 
         # Rasterize it
-        rvds = driver.Create('', src_offset[2], src_offset[3], 1, gdal.GDT_Byte)
+        rvds = driver.Create('', src_offset[2], src_offset[3], 1, gdal.GDT_Byte, options=['COMPRESS=LZW'])
         rvds.SetGeoTransform(new_gt)
         gdal.RasterizeLayer(rvds, [1], mem_layer, burn_values=[1])
         rv_array = rvds.ReadAsArray()
