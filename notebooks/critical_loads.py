@@ -1002,19 +1002,19 @@ def calculate_critical_loads_for_water(xl_path):
     # Nitrate flux
     df['ENO3_flux'] = df['Runoff'] * df['NO3N']
     
-    # 'clrat' is ratio of lake:catchment area
+    # 'CLrat' is ratio of lake:catchment area
     df['CLrat'] = df['Lake_area'] / df['Catch_area']
 
-    # 'ffor' is ratio of forest:catchment area
+    # 'Ffor' is ratio of forest:catchment area
     df['Ffor'] = df['Forest_area'] / df['Catch_area']
 
-    # 'nimm' is the long-term annual immobilisation (accumulation) rate of N
+    # 'Nimm' is the long-term annual immobilisation (accumulation) rate of N
     df['Nimm'] = df['Ni'] * (1 - df['CLrat'])
 
-    # If 'Lake_area' is 0, Sn and SS should be zero, else use defaults of 
+    # If 'Lake_area' is 0, SN and SS should be zero, else use defaults of 
     # 5 and 0.5, respectively
-    df.loc[df['SN'] < 0, 'SN'] = 0
-    df.loc[df['SS'] < 0, 'SS'] = 0
+    df.loc[df['CLrat'] == 0, 'SN'] = 0
+    df.loc[df['CLrat'] == 0, 'SS'] = 0
 
     # Present-day sum of sea-salt corrected base cation concentrations
     # NB: K was not included in the original workflow before 20.3.2015
@@ -1030,7 +1030,7 @@ def calculate_critical_loads_for_water(xl_path):
     # This is the current approach. Note the following:
     #     - Prior to 20.3.2015, the equation BC0 = 0.1936 + 1.0409*BCt was used
     #       This is incorrect - the x and y axes were swapped
-    #     - The correct equation is BC0 = 0.9431*BCt + 0.2744. Note however, that 
+    #     - The correct equation is BC0 = 0.9431*BCt + 0.2744. Note, however, that 
     #       the intercept term is not significant and should probably be omitted
     df['BC0'] = 0.9431*df['BCt'] + 0.2744
 
@@ -1052,8 +1052,8 @@ def calculate_critical_loads_for_water(xl_path):
     # Lake retention factors for N and S
     df['rhoS'] = df['SS'] / (df['SS'] + (df['Runoff'] / df['CLrat']))
     df['rhoN'] = df['SN'] / (df['SN'] + (df['Runoff'] / df['CLrat']))
-    df.loc[df['CLrat'] == 0, 'rhoS'] = 0  # If 'clrat' is 0, rhoS is 0
-    df.loc[df['CLrat'] == 0, 'rhoN'] = 0  # If 'clrat' is 0, rhoN is 0
+    df.loc[df['CLrat'] == 0, 'rhoS'] = 0  # If 'CLrat' is 0, rhoS is 0
+    df.loc[df['CLrat'] == 0, 'rhoN'] = 0  # If 'CLrat' is 0, rhoN is 0
 
     # Lake transmission factors. For N, takes into account what is lost to denitrification 
     # before the N reaches the lake
@@ -1077,7 +1077,7 @@ def calculate_critical_loads_for_water(xl_path):
     df['CLmaxNoaa'] = df['CLminN'] + (df['CLAOAA'] / df['alphaN'])
     df['CLmaxNoaa_magic'] = df['CLminN'] + (df['CLAOAA_magic'] / df['alphaN'])
 
-    # Rename columns
+    # Rename columns to reflect unit and sea-salt corrections
     df.rename({'Ca':  'ECax',
                'Cl':  'ECl',
                'Mg':  'EMgx',
@@ -1128,7 +1128,7 @@ def calculate_critical_loads_for_water(xl_path):
                } 
 
     df = df[['Region_id'] + list(col_dict.keys())]
-    cols_units = ['Region_id'] + [f'{i}_{col_dict[i]}' for i in col_dict.keys()]
+    cols_units = ['Region_id'] + [f'{i}_{col_dict[i]}' for i in col_dict.keys()] # Add units to header
     df.columns = cols_units
     
     return df
