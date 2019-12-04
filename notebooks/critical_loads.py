@@ -914,3 +914,221 @@ def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
         gdf.to_file(shp_path)
         
     return gdf
+
+def calculate_critical_loads_for_water(xl_path):
+    """ Calculates critical loads for water based on values entered in an 
+        Excel template (input_template_critical_loads_water.xlsx). See the
+        Excel file for full details of the input data requirements.
+        
+        This function performs broadly the same calculations as Tore's 'CL'
+        and 'CALKBLR' packages in RESA2, but generalised to allow for more
+        flexible input data. The original critical loads calculations were
+        implemented by Tore's 'cl.clcalculations' function, which has been 
+        documented by Kari:
+        
+        K:\Avdeling\317 Klima- og miljømodellering\KAU\Focal Centre\Data\CL script 23032015_notes.docx
+        
+        These notes form the basis for much of the code here.
+        
+    Args:
+        xl_path: Str. Path to completed copy the Excel input template
+        
+    Returns:
+        Dataframe.
+    """
+    import pandas as pd
+    import numpy as np
+    
+    # Dicts of constants used in script
+    # 1. Default values for parameters
+    default_vals = {'Catch_area': 1,
+                    'Lake_area':  0.05,
+                    'Forest_area':0.95,
+                    'Ni':         3.57,
+                    'Fde':        0.1,
+                    'SN':         5,
+                    'SS':         0.5,
+                    'TOC':        1,
+                    'K':          0,
+                    'Na':         0,                
+                   }
+
+    # 2. Unit conversions
+    units_dict = {'Runoff':1E-3,          # mm/yr => m/yr
+                  'Ca':    2*1000/40.08,  # mg/l  => ueq/l
+                  'Cl':    1*1000/35.45,  # mg/l  => ueq/l
+                  'Mg':    2*1000/24.31,  # mg/l  => ueq/l
+                  'Na':    1*1000/22.99,  # mg/l  => ueq/l
+                  'SO4':   2*1000/96.06,  # mg/l  => ueq/l
+                  'NO3N':  1/14.01,       # ug/l  => ueq/l
+                  'K':     1*1000/39.10,  # mg/l  => ueq/l
+                 }
+
+    # 3. Ratios to chloride
+    cl_ratios = {'Ca': 0.037,
+                 'Mg': 0.196,
+                 'Na': 0.859,
+                 'SO4':0.103,
+                 'K':  0.018,
+                }
+
+    # Read worksheets
+    df = pd.read_excel(xl_path, sheet_name='required_parameters')
+    opt_df = pd.read_excel(xl_path, sheet_name='optional_parameters')
+    mag_df = pd.read_excel(xl_path, sheet_name='magic_parameters')
+
+    # Check region ID is unique
+    assert df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'required_parameters'."
+    assert opt_df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'optional_parameters'."
+    assert mag_df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'magic_parameters'."
+
+    # Join    
+    df = pd.merge(df, opt_df, how='left', on='Region_id')
+    df = pd.merge(df, mag_df, how='left', on='Region_id')
+
+    # Fill NaNs in params with defaults
+    for col in default_vals.keys():
+        df[col].fillna(default_vals[col], inplace=True)
+
+    # Convert units
+    for col in units_dict.keys():
+        df[col] = df[col] * units_dict[col]
+
+    # Apply sea-salt correction 
+    for col in cl_ratios.keys():
+        df[col] = df[col] - (df['Cl'] * cl_ratios[col])
+        df.loc[df[col] < 0, col] = 0 # Set negative values to zero
+
+    # Nitrate flux
+    df['ENO3_flux'] = df['Runoff'] * df['NO3N']
+    
+    # 'clrat' is ratio of lake:catchment area
+    df['CLrat'] = df['Lake_area'] / df['Catch_area']
+
+    # 'ffor' is ratio of forest:catchment area
+    df['Ffor'] = df['Forest_area'] / df['Catch_area']
+
+    # 'nimm' is the long-term annual immobilisation (accumulation) rate of N
+    df['Nimm'] = df['Ni'] * (1 - df['CLrat'])
+
+    # If 'Lake_area' is 0, Sn and SS should be zero, else use defaults of 
+    # 5 and 0.5, respectively
+    df.loc[df['SN'] < 0, 'SN'] = 0
+    df.loc[df['SS'] < 0, 'SS'] = 0
+
+    # Present-day sum of sea-salt corrected base cation concentrations
+    # NB: K was not included in the original workflow before 20.3.2015
+    df['BCt'] = df['Ca'] + df['Mg'] + df['Na'] + df['K']
+
+    # Calculate BC0 using F-Factor method
+    # This was used before 2005 - 2006, but is not relevant at present
+    df['SO40'] = 3 + 0.17*df['BCt']
+    df['Ffac'] = np.sin((np.pi/2)*df['Runoff']*df['BCt']*(1/400))
+    df['BC0_Ffac'] = df['BCt'] - (df['Ffac'] * (df['SO4'] - df['SO40'] + df['NO3N']))
+
+    # Calculate BC0 using regression
+    # This is the current approach. Note the following:
+    #     - Prior to 20.3.2015, the equation BC0 = 0.1936 + 1.0409*BCt was used
+    #       This is incorrect - the x and y axes were swapped
+    #     - The correct equation is BC0 = 0.9431*BCt + 0.2744. Note however, that 
+    #       the intercept term is not significant and should probably be omitted
+    df['BC0'] = 0.9431*df['BCt'] + 0.2744
+
+    # Calculate BC0 from MAGIC output (if provided)
+    df['BC0_magic'] = df['Ca_magic'] + df['Mg_magic'] + df['Na_magic'] + df['K_magic']
+
+    # Calculate ANC limit (using BC0 and BC0_magic, both with and without a correction for organic acids)
+    df['ANClimit'] = np.minimum(50, (0.25 * df['Runoff'] * df['BC0']) / (1 + 0.25 * df['Runoff']))
+    df['ANClimit_magic'] = np.minimum(50, (0.25 * df['Runoff'] * df['BC0_magic']) / (1 + 0.25 * df['Runoff']))
+    df['ANClimitOAA'] = np.minimum(40, (0.2 * df['Runoff'] * (df['BC0'] - 3.4*df['TOC'])) / (1 + 0.2*df['Runoff']))
+    df['ANClimitOAA_magic'] = np.minimum(40, (0.2 * df['Runoff'] * (df['BC0_magic'] - 3.4*df['TOC'])) / (1 + 0.2*df['Runoff']))
+
+    # Calculate CLA (using BC0 and BC0_magic, both with and without a correction for organic acids)
+    df['CLA'] = df['Runoff'] * (df['BC0'] - df['ANClimit'])
+    df['CLA_magic'] = df['Runoff'] * (df['BC0_magic'] - df['ANClimit_magic'])
+    df['CLAOAA'] = df['Runoff'] * (df['BC0'] - df['ANClimitOAA'] - 3.4*df['TOC'])
+    df['CLAOAA_magic'] = df['Runoff'] * (df['BC0_magic'] - df['ANClimitOAA_magic'] - 3.4*df['TOC'])
+
+    # Lake retention factors for N and S
+    df['rhoS'] = df['SS'] / (df['SS'] + (df['Runoff'] / df['CLrat']))
+    df['rhoN'] = df['SN'] / (df['SN'] + (df['Runoff'] / df['CLrat']))
+    df.loc[df['CLrat'] == 0, 'rhoS'] = 0  # If 'clrat' is 0, rhoS is 0
+    df.loc[df['CLrat'] == 0, 'rhoN'] = 0  # If 'clrat' is 0, rhoN is 0
+
+    # Lake transmission factors. For N, takes into account what is lost to denitrification 
+    # before the N reaches the lake
+    df['alphaS'] = 1 - df['rhoS']
+    df['alphaN'] = (1 - (df['Fde']*(1 - df['CLrat']))) * (1 - df['rhoN'])
+
+    # beta1 is the fraction of N available for uptake by the forest
+    df['beta1'] = df['Ffor'] * (1 - df['Fde']) * (1 - df['rhoN'])
+
+    # beta2 the fraction of N available for immobilisation
+    df['beta2'] = (1 - df['Fde']) * (1 - df['CLrat']) * (1 - df['rhoN'])
+
+    # Calculate CLmax and CLmin (using BC0 and BC0_magic, both with and without a correction for organic acids)
+    df['CLmaxS'] = df['CLA'] / df['alphaS']
+    df['CLmaxS_magic'] = df['CLA_magic'] / df['alphaS']
+    df['CLmaxSoaa'] = df['CLAOAA'] / df['alphaS']
+    df['CLmaxSoaa_magic'] = df['CLAOAA_magic'] / df['alphaS']
+    df['CLminN'] = ((df['beta1'] * df['Nupt']) + (df['beta2']*df['Nimm'])) / df['alphaN']
+    df['CLmaxN'] = df['CLminN'] + (df['CLA'] / df['alphaN'])
+    df['CLmaxN_magic'] = df['CLminN'] + (df['CLA_magic'] / df['alphaN'])
+    df['CLmaxNoaa'] = df['CLminN'] + (df['CLAOAA'] / df['alphaN'])
+    df['CLmaxNoaa_magic'] = df['CLminN'] + (df['CLAOAA_magic'] / df['alphaN'])
+
+    # Rename columns
+    df.rename({'Ca':  'ECax',
+               'Cl':  'ECl',
+               'Mg':  'EMgx',
+               'Na':  'ENax',
+               'SO4': 'ESO4x',
+               'NO3N':'ENO3',
+               'K':   'EKx'
+              },
+              inplace=True,
+              axis='columns',
+             )
+
+    # Columns of interest for output (with units)
+    col_dict = {'Nimm':'meq/m2/yr',
+                'Nupt':'meq/m2/yr',
+                'rhoN':'',
+                'Ffor':'',
+                'CLrat':'',
+                'BC0':'ueq/l',
+                'BC0_magic':'ueq/l',
+                'ANClimit':'ueq/l', 
+                'ANClimitOAA':'ueq/l',
+                'ANClimit_magic':'ueq/l',
+                'ANClimitOAA_magic':'ueq/l',
+                'CLA':'meq/m2/yr',
+                'CLAOAA':'meq/m2/yr',
+                'CLA_magic':'meq/m2/yr',
+                'CLAOAA_magic':'meq/m2/yr',
+                'CLminN':'meq/m2/yr',
+                'CLmaxN':'meq/m2/yr',
+                'CLmaxNoaa':'meq/m2/yr',
+                'CLmaxN_magic':'meq/m2/yr',
+                'CLmaxNoaa_magic':'meq/m2/yr',
+                'CLmaxS':'meq/m2/yr',
+                'CLmaxSoaa':'meq/m2/yr',
+                'CLmaxS_magic':'meq/m2/yr',
+                'CLmaxSoaa_magic':'meq/m2/yr',
+                'Runoff':'m/yr',
+                'ENO3_flux':'meq/m2/yr',
+                'ECax':'ueq/l',
+                'ECl':'ueq/l',
+                'EMgx':'ueq/l',
+                'ENax':'ueq/l',
+                'ESO4x':'ueq/l',
+                'ENO3':'ueq/l',
+                'EKx':'ueq/l',
+                'TOC':'mg/l',
+               } 
+
+    df = df[['Region_id'] + list(col_dict.keys())]
+    cols_units = ['Region_id'] + [f'{i}_{col_dict[i]}' for i in col_dict.keys()]
+    df.columns = cols_units
+    
+    return df
