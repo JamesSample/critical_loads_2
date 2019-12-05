@@ -24,7 +24,7 @@ To make it easier to update and re-calculate critical loads for **water**, an Ex
  
  4. **[Water](http://nbviewer.jupyter.org/github/JamesSample/critical_loads_2/blob/master/notebooks/04_water_new_grid.ipynb)**. Workflow for calculating exceedances of critical loads for water using the 0.1 degree deposition data and two different exceedance models (**SSWC** and **FAB**)
  
- 5. **[Soil](http://nbviewer.jupyter.org/github/JamesSample/critical_loads_2/blob/master/notebooks/04_soil_new_grid.ipynb)**. Workflow for calculating exceedances of critical loads for soil using the 0.1 degree deposition data and the "old" (BLR-based) soil critical loads 
+ 5. **[Soil](http://nbviewer.jupyter.org/github/JamesSample/critical_loads_2/blob/master/notebooks/05_soil_new_grid.ipynb)**. Workflow for calculating exceedances of critical loads for soil using the 0.1 degree deposition data and the "old" (BLR-based) soil critical loads 
  
 ## Development code
 
