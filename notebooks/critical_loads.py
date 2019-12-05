@@ -915,10 +915,14 @@ def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
         
     return gdf
 
-def calculate_critical_loads_for_water(xl_path):
+def calculate_critical_loads_for_water(xl_path=None, req_df=None, opt_df=None, mag_df=None):
     """ Calculates critical loads for water based on values entered in an 
-        Excel template (input_template_critical_loads_water.xlsx). See the
-        Excel file for full details of the input data requirements.
+        Excel template (input_template_critical_loads_water.xlsx) or from 
+        the database. See the Excel file for full details of the input 
+        data requirements.
+        
+        You must provide EITHER the 'xl_path' OR the three separate 
+        dataframes - NOT BOTH.
         
         This function performs broadly the same calculations as Tore's 'CL'
         and 'CALKBLR' packages in RESA2, but generalised to allow for more
@@ -932,12 +936,28 @@ def calculate_critical_loads_for_water(xl_path):
         
     Args:
         xl_path: Str. Path to completed copy the Excel input template
+        req_df:  Dataframe of required parameters
+        opt_df:  Dataframe of optional parameters
+        mag_df:  Dataframe of magic parameters
         
     Returns:
         Dataframe.
     """
     import pandas as pd
     import numpy as np
+    
+    # Check input
+    if xl_path and (req_df is not None or mag_df is not None or opt_df is not None):
+        message = ("ERROR: You must provide EITHER the 'xl_path' OR the three "
+                   "separate dataframes - NOT both.")
+        print(message)
+        raise ValueError(message)
+        
+    if xl_path and (req_df is None and mag_df is None and opt_df is None):
+        # Read worksheets
+        req_df = pd.read_excel(xl_path, sheet_name='required_parameters')
+        opt_df = pd.read_excel(xl_path, sheet_name='optional_parameters')
+        mag_df = pd.read_excel(xl_path, sheet_name='magic_parameters')        
     
     # Dicts of constants used in script
     # 1. Default values for parameters
@@ -972,18 +992,13 @@ def calculate_critical_loads_for_water(xl_path):
                  'K':  0.018,
                 }
 
-    # Read worksheets
-    df = pd.read_excel(xl_path, sheet_name='required_parameters')
-    opt_df = pd.read_excel(xl_path, sheet_name='optional_parameters')
-    mag_df = pd.read_excel(xl_path, sheet_name='magic_parameters')
-
     # Check region ID is unique
-    assert df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'required_parameters'."
+    assert req_df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'required_parameters'."
     assert opt_df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'optional_parameters'."
     assert mag_df['Region_id'].is_unique, "'Region_id' is not unique within worksheet 'magic_parameters'."
 
     # Join    
-    df = pd.merge(df, opt_df, how='left', on='Region_id')
+    df = pd.merge(req_df, opt_df, how='left', on='Region_id')
     df = pd.merge(df, mag_df, how='left', on='Region_id')
 
     # Fill NaNs in params with defaults
@@ -1132,3 +1147,271 @@ def calculate_critical_loads_for_water(xl_path):
     df.columns = cols_units
     
     return df
+
+def rasterise_water_critical_loads(eng, cell_size=120):
+    """ Creates rasters of key critical loads parameters:
+    
+            'claoaa', 'eno3', 'clminn', 'clmaxnoaa', 'clmaxsoaa', 'clmins'
+            
+        based on water chemistry and model parameters per BLR grid square.
+        
+    Args:
+        eng:       Obj. Valid connection object for the 'critical_loads' database
+        cell_size: Int. Resolution of output rasters
+        
+    Returns:
+        None. The rasters are written to the shared drive here:
+        
+            shared/critical_loads/raster/water
+    """    
+    import os
+    import pandas as pd
+    import geopandas as gpd
+    import nivapy3 as nivapy
+    
+    # Read data from db
+    par_df = pd.read_sql('SELECT id as parameter_id, name, class FROM water.parameter_definitions', eng)
+    req_df = pd.read_sql('SELECT * FROM water.blr_required_parameters', eng)
+
+    # Restructure
+    req_df = pd.merge(req_df, 
+                      par_df,
+                      how='left',
+                      on='parameter_id')
+
+    del req_df['parameter_id'], req_df['class']
+    req_df = req_df.pivot(index='region_id', columns='name', values='value')
+    req_df.index.name = 'Region_id'
+    req_df.reset_index(inplace=True)
+    req_df.columns.name = ''
+
+    # Create empty dataframes with correct cols for MAGIC and 'optional' parameters
+    # (There are not used in the calculations below, but are expected by the CL function)
+    opt_cols = list(par_df[par_df['class'] == 'optional']['name'].values)
+    opt_df = pd.DataFrame(columns=['Region_id'] + opt_cols)
+
+    mag_cols = list(par_df[par_df['class'] == 'magic']['name'].values)
+    mag_df = pd.DataFrame(columns=['Region_id'] + mag_cols)
+
+    # Calculate critical loads
+    cl_df = calculate_critical_loads_for_water(req_df=req_df, opt_df=opt_df, mag_df=mag_df)
+
+    # Get just cols of interest
+    cols = ['Region_id', 'CLAOAA_meq/m2/yr', 'ENO3_flux_meq/m2/yr', 'CLminN_meq/m2/yr', 
+            'CLmaxNoaa_meq/m2/yr', 'CLmaxSoaa_meq/m2/yr']
+    cl_df = cl_df[cols]
+    cl_df.columns = [i.split('_')[0].lower() for i in cl_df.columns]
+
+    cl_df.dropna(how='any', inplace=True)
+    cl_df.rename({'region':'blr'}, axis='columns', inplace=True)
+
+    # Add CLminS as 0
+    cl_df['clmins'] = 0
+
+    # Join to BLR spatial data
+    blr_gdf = nivapy.da.read_postgis('deposition', 'dep_grid_blr', eng)
+    blr_gdf = blr_gdf[['blr', 'geom']]
+    blr_gdf = blr_gdf.merge(cl_df, on='blr')
+
+    # Save temporary file
+    blr_gdf.to_file('temp.geojson', driver='GeoJSON')
+
+    # Snap tiff
+    snap_tif = f'/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif'
+
+    # Rasterize each column
+    cols = ['claoaa', 'eno3', 'clminn', 'clmaxnoaa', 'clmaxsoaa', 'clmins']
+    for col in cols:
+        print(f'Rasterising {col}...')
+        # Tiff to create
+        out_tif = f'/home/jovyan/shared/critical_loads/raster/water/{col}_{cell_size}m.tif'    
+        vec_to_ras('temp.geojson', out_tif, snap_tif, col, -9999, 'Float32')
+
+    # Delete temp file
+    os.remove('temp.geojson')
+    print('Rasters saved to:')
+    print('    shared/critical_loads/raster/water')
+    
+def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
+    """ Calculate exceedances for water using the SSWC model.
+    
+    Args:
+        ser_id:     Int. Series ID for deposition data
+        cell_size:  Int. Resolution of output rasters
+        year_range: Str. Used in naming output exceedance grid. e.g. '11-16'
+                    for 2011 to 2016 data series
+    
+    Returns:
+        Dataframe summarising exceedances for water.
+    """
+    import pandas as pd
+    import numpy as np
+    import nivapy3 as nivapy
+    import gdal
+    
+    # Snap tiff
+    snap_tif = f'/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif'
+
+    # Read grids
+    s_tif = f'/home/jovyan/shared/critical_loads/raster/deposition/sdep_12-16_{cell_size}m.tif'
+    s_dep, s_ndv, epsg, extent = nivapy.spatial.read_raster(s_tif)
+    s_dep = s_dep.astype(np.float32)
+
+    eno3_tif = f'/home/jovyan/shared/critical_loads/raster/water/eno3_{cell_size}m.tif'
+    eno3fl, eno3_ndv, epsg, extent = nivapy.spatial.read_raster(eno3_tif)
+
+    claoaa_tif = f'/home/jovyan/shared/critical_loads/raster/water/claoaa_{cell_size}m.tif'
+    claoaa, cla_ndv, epsg, extent = nivapy.spatial.read_raster(claoaa_tif)
+
+    # Set ndv
+    s_dep[s_dep==s_ndv] = np.nan
+    eno3fl[eno3fl==eno3_ndv] = np.nan
+    claoaa[claoaa==cla_ndv] = np.nan
+
+    # Convert dep to meq/l
+    s_dep = s_dep * 2 / 32.06
+
+    # Get total area of non-NaN from dep grid
+    nor_area = np.count_nonzero(~np.isnan(s_dep))*cell_size*cell_size/1.E6
+
+    # Exceedance
+    sswc_ex = s_dep + eno3fl - claoaa
+    del s_dep, eno3fl, claoaa  
+
+    # Get total area exceeded
+    ex_area = np.count_nonzero(sswc_ex > 0)*cell_size*cell_size/1.E6
+
+    # Set <0 to 0
+    sswc_ex[sswc_ex<0] = 0
+
+    # Write geotif
+    sswc_tif = f'/home/jovyan/shared/critical_loads/raster/exceedance/sswc_ex_12-16_{cell_size}m.tif'
+    write_geotiff(sswc_ex, sswc_tif, snap_tif, -1, gdal.GDT_Float32)
+    del sswc_ex
+
+    print('Exceedance grid saved to:')
+    print(f'    {sswc_tif}')
+    
+    # Build df
+    ex_pct = 100 * ex_area / nor_area
+    ex_df = pd.DataFrame({'exceeded_area_km2':ex_area,
+                          'total_area_km2':nor_area,
+                          'exceeded_area_pct':ex_pct},
+                         index=[0],
+                        )
+    ex_df = ex_df.round(0).astype(int)
+    ex_df['series_id'] = ser_id
+    ex_df['medium'] = 'water_sswc'
+    
+    ex_df = ex_df[['series_id', 'medium', 'total_area_km2', 'exceeded_area_km2', 
+                   'exceeded_area_pct']]
+
+    return ex_df
+
+def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
+    """ Vectorised version of exceed_ns_icpm(). Calculates exceedances based on 
+        the methodology outlined by Max Posch in the ICP Mapping manual (section 
+        VII.4):
+        
+        http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
+        
+        NB: All units should be in eq/l.
+        
+    Args:
+        cln_min: Float array. Parameter to define "critical load function" (see PDF)
+        cln_max: Float array. Parameter to define "critical load function" (see PDF)
+        cls_min: Float array. Parameter to define "critical load function" (see PDF)
+        cls_max: Float array. Parameter to define "critical load function" (see PDF)
+        dep_n:   Float array. Total N deposition
+        dep_s:   Float array. Total (non-marine) S deposition
+        
+    Returns:
+        Tuple of arrays (ex_n, ex_s, reg_id)
+        
+        ex_n and ex_s are the exceedances for N and S depositions dep_n and dep_s
+        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The 
+        overall exceedance is (ex_n + ex_s). 
+        
+        reg_id is an integer array of region IDs, as defined in Figure VII.3 of the PDF.
+    """
+    import numpy as np
+    
+    # Create NaN arrays for output with correct dimensions
+    ex_n = np.full(shape=dep_s.shape, fill_value=np.nan)
+    ex_s = np.full(shape=dep_s.shape, fill_value=np.nan)
+    reg_id = np.full(shape=dep_s.shape, fill_value=np.nan)
+
+    # Handle edge cases
+    # CLF pars < 0
+    mask = ((cln_min < 0) | (cln_max < 0) | (cls_min < 0) | (cls_max < 0))
+    ex_n[mask] = -1
+    ex_s[mask] = -1
+    reg_id[mask] = -1
+    edited = mask.copy() # Keep track of edited cells so we don't change them again
+                         # This is analagous to the original 'if' statement in
+                         # exceed_ns_icpm(), which requires the logic to be 
+                         # implemented in a specific order i.e. once a cell has been
+                         # edited we do not want to change it again (just like once
+                         # the 'if' evaluates to True, we don't proceed any further)        
+
+    # CL = 0
+    mask = ((cls_max == 0) & (cln_max == 0) & (edited == 0))
+    ex_n[mask] = dep_n[mask]
+    ex_s[mask] = dep_s[mask]
+    reg_id[mask] = 9
+    edited += mask
+
+    # Otherwise, we're somewhere on Fig. VII.3
+    dn = cln_min - cln_max
+    ds = cls_max - cls_min
+
+    # Non-exceedance
+    mask = ((dep_s <= cls_max) & (dep_n <= cln_max) &
+            ((dep_n - cln_max)*ds <= (dep_s - cls_min)*dn) &
+            (edited == 0))   
+    ex_n[mask] = 0
+    ex_s[mask] = 0
+    reg_id[mask] = 0
+    edited += mask
+
+    # Region 1
+    mask = ((dep_s <= cls_min) & (edited == 0))
+    ex_n[mask] = dep_n[mask] - cln_max[mask]
+    ex_s[mask] = 0
+    reg_id[mask] = 1
+    edited += mask
+
+    # Region 5
+    mask = ((dep_n <= cln_min) & (edited == 0))   
+    ex_s[mask] = dep_s[mask] - cls_max[mask]
+    ex_n[mask] = 0
+    reg_id[mask] = 5 
+    edited += mask
+
+    # Region 2
+    mask = ((-(dep_n - cln_max)*dn >= (dep_s - cls_min)*ds) & (edited == 0))
+    ex_n[mask] = dep_n[mask] - cln_max[mask]
+    ex_s[mask] = dep_s[mask] - cls_min[mask]
+    reg_id[mask] = 2
+    edited += mask
+
+    # Region 4
+    mask = ((-(dep_n - cln_min)*dn <= (dep_s - cls_max)*ds) & (edited == 0))
+    ex_n[mask] = dep_n[mask] - cln_min[mask]
+    ex_s[mask] = dep_s[mask] - cls_max[mask]
+    reg_id[mask] = 4
+    edited += mask
+
+    # Region 3 (anything not already edited)
+    dd = dn**2 + ds**2
+    s = dep_n*dn + dep_s*ds
+    v = cln_max*ds - cls_min*dn
+    xf = (dn*s + ds*v)/dd
+    yf = (ds*s - dn*v)/dd
+    ex_n[~edited] = dep_n[~edited] - xf[~edited]
+    ex_s[~edited] = dep_s[~edited] - yf[~edited]  
+    reg_id[~edited] = 3
+
+    del mask, edited, dd, s, v, xf, yf, dn, ds
+    
+    return (ex_n, ex_s, reg_id)
