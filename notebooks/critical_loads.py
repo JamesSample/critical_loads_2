@@ -213,6 +213,7 @@ def extract_deposition_as_gdf(series_id, par, eng):
 
     # Convert units
     gdf[par[0] + "dep_meqpm2pyr"] = gdf[par[0] + "dep_mgpm2pyr"] * unit_factor
+    gdf[par[0] + "dep_kgphapyr"] = gdf[par[0] + "dep_mgpm2pyr"] / 100 
 
     return gdf
 
@@ -225,7 +226,7 @@ def create_deposition_raster(
     Args:
         series_id: Int. ID for deposition series of interest
         par:       Str. One of ['nitrogen', 'sulphur']
-        unit:      Str. One of ['mgpm2pyr', 'meqpm2pyr']
+        unit:      Str. One of ['mgpm2pyr', kgphapyr, 'meqpm2pyr']
         cell_size: Int. Output cell size in metres. Determines the "snap raster" to be used
                    One of (30, 60, 120)
         eng:       Obj. Active database connection object    
@@ -253,8 +254,9 @@ def create_deposition_raster(
 
     assert unit in (
         "mgpm2pyr",
+        "kgphapyr"
         "meqpm2pyr",
-    ), "'unit' must be one of ('mgpm2pyr', 'meqpm2pyr')."
+    ), "'unit' must be one of ('mgpm2pyr', 'kgphapyr', 'meqpm2pyr')."
 
     assert cell_size in (30, 60, 120), "'cell_size' must be one of (30, 60, 120)."
 
