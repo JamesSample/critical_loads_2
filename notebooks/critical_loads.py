@@ -153,19 +153,26 @@ def upload_nilu_0_1deg_dep_data(data_fold, eng, series_id):
     return df
 
 
-def extract_deposition_as_gdf(series_id, par, eng):
+def extract_deposition_as_gdf(series_id, par, eng, veg_class=None):
     """ Extracts deposition data for the specified series as a geodataframe.
         
     Args: 
         series_id: Int. ID for deposition series of interest
         par:       Str. One of ['nitrogen', 'sulphur']
         eng:       Obj. Active database connection object
+        veg_class: Str or None. Only applies for data using the EMEP grid, which
+                   reports deposition values for different vegetation classes.
+                   For EMEP, must be one of ['grid average', 'forest', 'semi-natural'];
+                   otherwise, pass None
         
     Returns:
         GeoDataFrame.
     """
     import geopandas as gpd
+    import warnings
     from sqlalchemy.sql import text
+
+    veg_class_dict = {"grid average": 1, "forest": 2, "semi-natural": 3}
 
     assert isinstance(series_id, int), "'series_id' must be an integer."
     assert par in (
@@ -177,49 +184,117 @@ def extract_deposition_as_gdf(series_id, par, eng):
     param_dict = {"series_id": series_id}
     sql = "SELECT grid FROM deposition.dep_series_defs " "WHERE series_id = :series_id"
     sql = text(sql)
-    res = eng.execute(sql, param_dict).fetchall()[0][0]
+    grid = eng.execute(sql, param_dict).fetchall()[0][0]
+
+    assert (
+        grid is not None
+    ), "'grid' is not defined for this series in the 'dep_series_defs' table.\n"
+
+    if (grid == "emep") and (veg_class is None):
+        assert veg_class in ["grid average", "forest", "semi-natural"], (
+            "The specified series ID refers to the EMEP grid, "
+            "so you must also specify the 'veg_class' parameter.\n"
+            "Choose one of ['grid average', 'forest', 'semi-natural'] "
+            "and pass e.g. veg_class='grid average'."
+        )
+
+    if (grid != "emep") and (veg_class is not None):
+        print(
+            "WARNING: The specified series ID does NOT refer to the EMEP grid. "
+            "The 'veg_class' parameter will be ignored."
+        )
 
     if par == "nitrogen":
         unit_factor = 1 / 14.01
-        sql = (
-            f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
-            f"  a.cell_id, "
-            f"  ROUND(a.n_dep) AS ndep_mgpm2pyr "
-            f"FROM (SELECT cell_id, SUM(value) as n_dep "
-            f"      FROM deposition.dep_values_{res}_grid "
-            f"      WHERE param_id IN (1, 2) "
-            f"      AND series_id = :series_id "
-            f"      GROUP BY cell_id) AS a, "
-            f"deposition.dep_grid_{res} AS b "
-            f"WHERE a.cell_id = b.cell_id"
-        )
+
+        if grid == "emep":
+            param_dict["veg_class_id"] = veg_class_dict[veg_class]
+
+            # Choose 'grid-average' for veg class
+            sql = (
+                f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
+                f"  a.cell_id, "
+                f"  ROUND(a.n_dep) AS ndep_mgpm2pyr "
+                f"FROM (SELECT cell_id, SUM(value) as n_dep "
+                f"      FROM deposition.dep_values_{grid}_grid "
+                f"      WHERE param_id IN (1, 2) "
+                f"      AND veg_class_id = :veg_class_id "
+                f"      AND series_id = :series_id "
+                f"      GROUP BY cell_id) AS a, "
+                f"deposition.dep_grid_{grid} AS b "
+                f"WHERE a.cell_id = b.cell_id"
+            )
+
+        else:
+            # No veg classes to consider
+            sql = (
+                f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
+                f"  a.cell_id, "
+                f"  ROUND(a.n_dep) AS ndep_mgpm2pyr "
+                f"FROM (SELECT cell_id, SUM(value) as n_dep "
+                f"      FROM deposition.dep_values_{grid}_grid "
+                f"      WHERE param_id IN (1, 2) "
+                f"      AND series_id = :series_id "
+                f"      GROUP BY cell_id) AS a, "
+                f"deposition.dep_grid_{grid} AS b "
+                f"WHERE a.cell_id = b.cell_id"
+            )
     else:
         unit_factor = 2 / 32.06
-        sql = (
-            f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
-            f"  a.cell_id, "
-            f"  ROUND(a.s_dep) AS sdep_mgpm2pyr "
-            f"FROM (SELECT cell_id, SUM(value) as s_dep "
-            f"      FROM deposition.dep_values_{res}_grid "
-            f"      WHERE param_id = 4 "
-            f"      AND series_id = :series_id "
-            f"      GROUP BY cell_id) AS a, "
-            f"deposition.dep_grid_{res} AS b "
-            f"WHERE a.cell_id = b.cell_id"
-        )
+
+        if grid == "emep":
+            param_dict["veg_class_id"] = veg_class_dict[veg_class]
+
+            # Choose 'grid-average' for veg class
+            sql = (
+                f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
+                f"  a.cell_id, "
+                f"  ROUND(a.s_dep) AS sdep_mgpm2pyr "
+                f"FROM (SELECT cell_id, SUM(value) as s_dep "
+                f"      FROM deposition.dep_values_{grid}_grid "
+                f"      WHERE param_id = 4 "
+                f"      AND veg_class_id = :veg_class_id "
+                f"      AND series_id = :series_id "
+                f"      GROUP BY cell_id) AS a, "
+                f"deposition.dep_grid_{grid} AS b "
+                f"WHERE a.cell_id = b.cell_id"
+            )
+
+        else:
+            # No veg classes to consider
+            sql = (
+                f"SELECT ST_Multi(ST_Transform(b.geom, 32633)) AS geom, "
+                f"  a.cell_id, "
+                f"  ROUND(a.s_dep) AS sdep_mgpm2pyr "
+                f"FROM (SELECT cell_id, SUM(value) as s_dep "
+                f"      FROM deposition.dep_values_{grid}_grid "
+                f"      WHERE param_id = 4 "
+                f"      AND series_id = :series_id "
+                f"      GROUP BY cell_id) AS a, "
+                f"deposition.dep_grid_{grid} AS b "
+                f"WHERE a.cell_id = b.cell_id"
+            )
 
     sql = text(sql)
     gdf = gpd.read_postgis(sql, eng, params=param_dict)
 
     # Convert units
     gdf[par[0] + "dep_meqpm2pyr"] = gdf[par[0] + "dep_mgpm2pyr"] * unit_factor
-    gdf[par[0] + "dep_kgphapyr"] = gdf[par[0] + "dep_mgpm2pyr"] / 100 
+    gdf[par[0] + "dep_kgphapyr"] = gdf[par[0] + "dep_mgpm2pyr"] / 100
 
     return gdf
 
 
 def create_deposition_raster(
-    series_id, par, unit, cell_size, eng, ndv=-9999, bit_depth="Int16", fname=None
+    series_id,
+    par,
+    unit,
+    cell_size,
+    eng,
+    ndv=-9999,
+    bit_depth="Int16",
+    fname=None,
+    veg_class=None,
 ):
     """ Create a raster of deposition values from a Geodataframe. 
         
@@ -240,6 +315,10 @@ def create_deposition_raster(
                        'Float32'
                        'Float64'
         fname:     Str or None. File path for output. If None, the raster will be saved to
+        veg_class: Str or None. Only applies for data using the EMEP grid, which
+                   reports deposition values for different vegetation classes.
+                   For EMEP, must be one of ['grid average', 'forest', 'semi-natural'];
+                   otherwise, pass None
 
                        shared/critical_loads/raster/deposition/short_name.tif
 
@@ -254,14 +333,13 @@ def create_deposition_raster(
 
     assert unit in (
         "mgpm2pyr",
-        "kgphapyr"
-        "meqpm2pyr",
+        "kgphapyr" "meqpm2pyr",
     ), "'unit' must be one of ('mgpm2pyr', 'kgphapyr', 'meqpm2pyr')."
 
     assert cell_size in (30, 60, 120), "'cell_size' must be one of (30, 60, 120)."
 
     # Get data
-    gdf = extract_deposition_as_gdf(series_id, par, eng)
+    gdf = extract_deposition_as_gdf(series_id, par, eng, veg_class=veg_class)
 
     # Save temporary file
     gdf.to_file("temp_ndep.geojson", driver="GeoJSON")
