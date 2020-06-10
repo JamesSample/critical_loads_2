@@ -1536,7 +1536,7 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
         
         http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
         
-        NB: All units should be in eq/l.
+        NB: All units should be in meq/l.
         
     Args:
         cln_min: Float array. Parameter to define "critical load function" (see PDF)
