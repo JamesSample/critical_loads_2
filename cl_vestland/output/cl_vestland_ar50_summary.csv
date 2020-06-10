@@ -1,0 +1,30 @@
+station_id,station_code,artype,description,area_km2
+84,Sam_Tyss,10,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.19324577680498733
+84,Sam_Tyss,20,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",2.9056530625762846
+84,Sam_Tyss,30,Skog: Skogdekt areal,61.54515904856523
+84,Sam_Tyss,50,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,153.19302866598858
+84,Sam_Tyss,60,Myr: Areal som på overflata har preg av myr,5.033939636505917
+84,Sam_Tyss,81,Ferskvann: Elv og innsjø,13.37069640427167
+85,Sam_Tyss_IntCat,10,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.01063167851550319
+85,Sam_Tyss_IntCat,20,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",0.57150791486552
+85,Sam_Tyss_IntCat,30,Skog: Skogdekt areal,5.2413455549231776
+85,Sam_Tyss_IntCat,50,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.37826166241512027
+85,Sam_Tyss_IntCat,60,Myr: Areal som på overflata har preg av myr,0.01839997933223359
+85,Sam_Tyss_IntCat,81,Ferskvann: Elv og innsjø,0.446303804438677
+86,Sam_Stor,20,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",0.7074497980946736
+86,Sam_Stor,30,Skog: Skogdekt areal,5.049526929046115
+86,Sam_Stor,50,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.5722059849946511
+86,Sam_Stor,60,Myr: Areal som på overflata har preg av myr,0.859793656071244
+86,Sam_Stor,81,Ferskvann: Elv og innsjø,0.015060111367736176
+87,Sam_Froe,10,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.17985912447977043
+87,Sam_Froe,20,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",1.2172030276070032
+87,Sam_Froe,30,Skog: Skogdekt areal,31.46396058632218
+87,Sam_Froe,50,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,58.61759675570788
+87,Sam_Froe,60,Myr: Areal som på overflata har preg av myr,2.5299887055492594
+87,Sam_Froe,81,Ferskvann: Elv og innsjø,2.610169021337754
+88,Sam_Frok,10,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.0027549738097753873
+88,Sam_Frok,20,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",0.4094923220091179
+88,Sam_Frok,30,Skog: Skogdekt areal,19.790325978273838
+88,Sam_Frok,50,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,93.62496426287049
+88,Sam_Frok,60,Myr: Areal som på overflata har preg av myr,1.6257572955531217
+88,Sam_Frok,81,Ferskvann: Elv og innsjø,10.299163467127526
