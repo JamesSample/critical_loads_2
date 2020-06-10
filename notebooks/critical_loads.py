@@ -1033,6 +1033,68 @@ def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
     return gdf
 
 
+def calc_anclimit_cla_clminmax(df, bc0):
+    """ Calculates the ANC Limit, the CLA and the CLmin and CLmax values using
+        the specified version of BC0, both with and without a correction for organic 
+        acids).
+        
+        Used by calculate_critical_loads_for_water()
+    
+    Args:
+        df:  Dataframe.
+        bc0: Str. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
+        
+    Returns:
+        Dataframe with new columns for 
+            
+            ['ANClimit_{bc0}', 
+             'ANClimitOAA_{bc0}', 
+             'CLA_{bc0}', 
+             'CLAOAA_{bc0}', 
+             'CLmaxS_{bc0}', 
+             'CLmaxSoaa_{bc0}', 
+             'CLmaxN_{bc0}', 
+             'CLmaxNoaa_{bc0}',
+            ]
+    """
+    import numpy as np
+    
+    assert bc0 in ['BC0', 'BC0_Ffac', 'BC0_magic'], "'bc0' must be one of ['BC0', 'BC0_Ffac', 'BC0_magic']."
+    
+    method = bc0.replace('BC0', '')
+        
+    # ANC limit
+    df[f'ANClimit{method}'] = np.minimum(
+        50, (0.25 * df["Runoff"] * df[bc0]) / (1 + 0.25 * df["Runoff"])
+    )
+    
+    # ANC limit OAA
+    df[f'ANClimitOAA{method}'] = np.minimum(
+        40,
+        (0.2 * df["Runoff"] * (df[bc0] - 3.4 * df["TOC"])) / (1 + 0.2 * df["Runoff"]),
+    )
+    
+    # CLA
+    df[f'CLA{method}'] = df["Runoff"] * (df[bc0] - df[f'ANClimit{method}'])
+    
+    # CLA OAA
+    df[f'CLAOAA{method}'] = df["Runoff"] * (df[bc0] - df[f'ANClimitOAA{method}'] - 3.4 * df["TOC"])
+    
+    # CLmaxS
+    df[f"CLmaxS{method}"] = df[f"CLA{method}"] / df["alphaS"]
+    
+    # CLmaxSoaa
+    df[f"CLmaxSoaa{method}"] = df[f"CLAOAA{method}"] / df["alphaS"]
+    
+    # CLmaxN
+    df[f"CLmaxN{method}"] = df["CLminN"] + (df[f"CLA{method}"] / df["alphaN"])
+    
+    # CLmaxNoaa
+    df[f"CLmaxNoaa{method}"] = df["CLminN"] + (df[f"CLAOAA{method}"] / df["alphaN"])    
+    
+    return df
+
+
 def calculate_critical_loads_for_water(
     xl_path=None, req_df=None, opt_df=None, mag_df=None
 ):
@@ -1183,31 +1245,6 @@ def calculate_critical_loads_for_water(
     # Calculate BC0 from MAGIC output (if provided)
     df["BC0_magic"] = df["Ca_magic"] + df["Mg_magic"] + df["Na_magic"] + df["K_magic"]
 
-    # Calculate ANC limit (using BC0 and BC0_magic, both with and without a correction for organic acids)
-    df["ANClimit"] = np.minimum(
-        50, (0.25 * df["Runoff"] * df["BC0"]) / (1 + 0.25 * df["Runoff"])
-    )
-    df["ANClimit_magic"] = np.minimum(
-        50, (0.25 * df["Runoff"] * df["BC0_magic"]) / (1 + 0.25 * df["Runoff"])
-    )
-    df["ANClimitOAA"] = np.minimum(
-        40,
-        (0.2 * df["Runoff"] * (df["BC0"] - 3.4 * df["TOC"])) / (1 + 0.2 * df["Runoff"]),
-    )
-    df["ANClimitOAA_magic"] = np.minimum(
-        40,
-        (0.2 * df["Runoff"] * (df["BC0_magic"] - 3.4 * df["TOC"]))
-        / (1 + 0.2 * df["Runoff"]),
-    )
-
-    # Calculate CLA (using BC0 and BC0_magic, both with and without a correction for organic acids)
-    df["CLA"] = df["Runoff"] * (df["BC0"] - df["ANClimit"])
-    df["CLA_magic"] = df["Runoff"] * (df["BC0_magic"] - df["ANClimit_magic"])
-    df["CLAOAA"] = df["Runoff"] * (df["BC0"] - df["ANClimitOAA"] - 3.4 * df["TOC"])
-    df["CLAOAA_magic"] = df["Runoff"] * (
-        df["BC0_magic"] - df["ANClimitOAA_magic"] - 3.4 * df["TOC"]
-    )
-
     # Lake retention factors for N and S
     df["rhoS"] = df["SS"] / (df["SS"] + (df["Runoff"] / df["CLrat"]))
     df["rhoN"] = df["SN"] / (df["SN"] + (df["Runoff"] / df["CLrat"]))
@@ -1225,18 +1262,14 @@ def calculate_critical_loads_for_water(
     # beta2 the fraction of N available for immobilisation
     df["beta2"] = (1 - df["Fde"]) * (1 - df["CLrat"]) * (1 - df["rhoN"])
 
-    # Calculate CLmax and CLmin (using BC0 and BC0_magic, both with and without a correction for organic acids)
-    df["CLmaxS"] = df["CLA"] / df["alphaS"]
-    df["CLmaxS_magic"] = df["CLA_magic"] / df["alphaS"]
-    df["CLmaxSoaa"] = df["CLAOAA"] / df["alphaS"]
-    df["CLmaxSoaa_magic"] = df["CLAOAA_magic"] / df["alphaS"]
+    # Calculate ANC limits, CLAs and CLmax & CLmin (using BC0, BC0_Ffac and BC0_magic, both with and without 
+    # corrections for organic acids)
     df["CLminN"] = ((df["beta1"] * df["Nupt"]) + (df["beta2"] * df["Nimm"])) / df[
         "alphaN"
     ]
-    df["CLmaxN"] = df["CLminN"] + (df["CLA"] / df["alphaN"])
-    df["CLmaxN_magic"] = df["CLminN"] + (df["CLA_magic"] / df["alphaN"])
-    df["CLmaxNoaa"] = df["CLminN"] + (df["CLAOAA"] / df["alphaN"])
-    df["CLmaxNoaa_magic"] = df["CLminN"] + (df["CLAOAA_magic"] / df["alphaN"])
+    
+    for bc0_method in ['BC0', 'BC0_Ffac', 'BC0_magic']:
+        df = calc_anclimit_cla_clminmax(df, bc0_method)
 
     # Rename columns to reflect unit and sea-salt corrections
     df.rename(
@@ -1261,22 +1294,31 @@ def calculate_critical_loads_for_water(
         "Ffor": "",
         "CLrat": "",
         "BC0": "ueq/l",
+        "BC0_Ffac": "ueq/l",
         "BC0_magic": "ueq/l",
         "ANClimit": "ueq/l",
         "ANClimitOAA": "ueq/l",
+        "ANClimit_Ffac": "ueq/l",
+        "ANClimitOAA_Ffac": "ueq/l",
         "ANClimit_magic": "ueq/l",
         "ANClimitOAA_magic": "ueq/l",
         "CLA": "meq/m2/yr",
         "CLAOAA": "meq/m2/yr",
+        "CLA_Ffac": "meq/m2/yr",
+        "CLAOAA_Ffac": "meq/m2/yr",
         "CLA_magic": "meq/m2/yr",
         "CLAOAA_magic": "meq/m2/yr",
         "CLminN": "meq/m2/yr",
         "CLmaxN": "meq/m2/yr",
         "CLmaxNoaa": "meq/m2/yr",
+        "CLmaxN_Ffac": "meq/m2/yr",
+        "CLmaxNoaa_Ffac": "meq/m2/yr",
         "CLmaxN_magic": "meq/m2/yr",
         "CLmaxNoaa_magic": "meq/m2/yr",
         "CLmaxS": "meq/m2/yr",
         "CLmaxSoaa": "meq/m2/yr",
+        "CLmaxS_Ffac": "meq/m2/yr",
+        "CLmaxSoaa_Ffac": "meq/m2/yr",
         "CLmaxS_magic": "meq/m2/yr",
         "CLmaxSoaa_magic": "meq/m2/yr",
         "Runoff": "m/yr",
