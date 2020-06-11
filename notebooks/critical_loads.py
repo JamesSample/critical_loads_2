@@ -1058,40 +1058,46 @@ def calc_anclimit_cla_clminmax(df, bc0):
             ]
     """
     import numpy as np
-    
-    assert bc0 in ['BC0', 'BC0_Ffac', 'BC0_magic'], "'bc0' must be one of ['BC0', 'BC0_Ffac', 'BC0_magic']."
-    
-    method = bc0.replace('BC0', '')
-        
+
+    assert bc0 in [
+        "BC0",
+        "BC0_Ffac",
+        "BC0_magic",
+    ], "'bc0' must be one of ['BC0', 'BC0_Ffac', 'BC0_magic']."
+
+    method = bc0.replace("BC0", "")
+
     # ANC limit
-    df[f'ANClimit{method}'] = np.minimum(
+    df[f"ANClimit{method}"] = np.minimum(
         50, (0.25 * df["Runoff"] * df[bc0]) / (1 + 0.25 * df["Runoff"])
     )
-    
+
     # ANC limit OAA
-    df[f'ANClimitOAA{method}'] = np.minimum(
+    df[f"ANClimitOAA{method}"] = np.minimum(
         40,
         (0.2 * df["Runoff"] * (df[bc0] - 3.4 * df["TOC"])) / (1 + 0.2 * df["Runoff"]),
     )
-    
+
     # CLA
-    df[f'CLA{method}'] = df["Runoff"] * (df[bc0] - df[f'ANClimit{method}'])
-    
+    df[f"CLA{method}"] = df["Runoff"] * (df[bc0] - df[f"ANClimit{method}"])
+
     # CLA OAA
-    df[f'CLAOAA{method}'] = df["Runoff"] * (df[bc0] - df[f'ANClimitOAA{method}'] - 3.4 * df["TOC"])
-    
+    df[f"CLAOAA{method}"] = df["Runoff"] * (
+        df[bc0] - df[f"ANClimitOAA{method}"] - 3.4 * df["TOC"]
+    )
+
     # CLmaxS
     df[f"CLmaxS{method}"] = df[f"CLA{method}"] / df["alphaS"]
-    
+
     # CLmaxSoaa
     df[f"CLmaxSoaa{method}"] = df[f"CLAOAA{method}"] / df["alphaS"]
-    
+
     # CLmaxN
     df[f"CLmaxN{method}"] = df["CLminN"] + (df[f"CLA{method}"] / df["alphaN"])
-    
+
     # CLmaxNoaa
-    df[f"CLmaxNoaa{method}"] = df["CLminN"] + (df[f"CLAOAA{method}"] / df["alphaN"])    
-    
+    df[f"CLmaxNoaa{method}"] = df["CLminN"] + (df[f"CLAOAA{method}"] / df["alphaN"])
+
     return df
 
 
@@ -1262,13 +1268,13 @@ def calculate_critical_loads_for_water(
     # beta2 the fraction of N available for immobilisation
     df["beta2"] = (1 - df["Fde"]) * (1 - df["CLrat"]) * (1 - df["rhoN"])
 
-    # Calculate ANC limits, CLAs and CLmax & CLmin (using BC0, BC0_Ffac and BC0_magic, both with and without 
+    # Calculate ANC limits, CLAs and CLmax & CLmin (using BC0, BC0_Ffac and BC0_magic, both with and without
     # corrections for organic acids)
     df["CLminN"] = ((df["beta1"] * df["Nupt"]) + (df["beta2"] * df["Nimm"])) / df[
         "alphaN"
     ]
-    
-    for bc0_method in ['BC0', 'BC0_Ffac', 'BC0_magic']:
+
+    for bc0_method in ["BC0", "BC0_Ffac", "BC0_magic"]:
         df = calc_anclimit_cla_clminmax(df, bc0_method)
 
     # Rename columns to reflect unit and sea-salt corrections
@@ -1527,6 +1533,106 @@ def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
     ]
 
     return ex_df
+
+
+def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
+    """ Calculates exceedances based on the methodology outlined by Max
+        Posch in the ICP Mapping manual (section VII.4):
+        
+        http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
+        
+        NB: All units should be in eq/l.
+        
+    Args:
+        cln_min: Float. Parameter to define "critical load function" (see PDF)
+        cln_max: Float. Parameter to define "critical load function" (see PDF)
+        cls_min: Float. Parameter to define "critical load function" (see PDF)
+        cls_max: Float. Parameter to define "critical load function" (see PDF)
+        dep_n:   Float. Total N deposition
+        dep_s:   Float. Total (non-marine) S deposition
+        
+    Returns:
+        Tuple (ex_n, ex_s, reg_id)
+        
+        ex_n and ex_s are the exceedances for N and S depositions dep_n and dep_s
+        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The 
+        overall exceedance is (ex_n + ex_s). 
+        
+        reg_id is an integer region ID, as defined in Figure VII.3 of the PDF.
+    """
+    # Check inputs
+    assert (dep_n >= 0) and (dep_s >= 0), "Deposition cannot be negative."
+
+    # Make sure floats
+    cln_min = float(cln_min)
+    cln_max = float(cln_max)
+    cls_min = float(cls_min)
+    cls_max = float(cls_max)
+    dep_n = float(dep_n)
+    dep_s = float(dep_s)
+
+    # Handle edge cases
+    # CLF pars < 0
+    if (cln_min < 0) or (cln_max < 0) or (cls_min < 0) or (cls_max < 0):
+        # Pars not valid
+        return (-1, -1, -1)
+
+    # CL = 0
+    if (cls_max == 0) and (cln_max == 0):
+        # All dep is above CL
+        return (dep_n, dep_s, 9)
+
+    # Otherwise, we're somewhere on Fig. VII.3
+    dn = cln_min - cln_max
+    ds = cls_max - cls_min
+
+    if (
+        (dep_s <= cls_max)
+        and (dep_n <= cln_max)
+        and ((dep_n - cln_max) * ds <= (dep_s - cls_min) * dn)
+    ):
+        # Non-exceedance
+        return (0, 0, 0)
+
+    elif dep_s <= cls_min:
+        # Region 1
+        ex_s = 0
+        ex_n = dep_n - cln_max
+
+        return (ex_n, ex_s, 1)
+
+    elif dep_n <= cln_min:
+        # Region 5
+        ex_s = dep_s - cls_max
+        ex_n = 0
+
+        return (ex_n, ex_s, 5)
+
+    elif -(dep_n - cln_max) * dn >= (dep_s - cls_min) * ds:
+        # Region 2
+        ex_n = dep_n - cln_max
+        ex_s = dep_s - cls_min
+
+        return (ex_n, ex_s, 2)
+
+    elif -(dep_n - cln_min) * dn <= (dep_s - cls_max) * ds:
+        # Region 4
+        ex_n = dep_n - cln_min
+        ex_s = dep_s - cls_max
+
+        return (ex_n, ex_s, 4)
+
+    else:
+        # Region 3
+        dd = dn ** 2 + ds ** 2
+        s = dep_n * dn + dep_s * ds
+        v = cln_max * ds - cls_min * dn
+        xf = (dn * s + ds * v) / dd
+        yf = (ds * s - dn * v) / dd
+        ex_n = dep_n - xf
+        ex_s = dep_s - yf
+
+        return (ex_n, ex_s, 3)
 
 
 def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
