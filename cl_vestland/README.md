@@ -14,7 +14,7 @@
 
  * Summary statistics from the **AR50** land cover dataset and **NVE's lakes database** are [here](https://github.com/JamesSample/critical_loads_2/blob/master/cl_vestland/output/cl_vestland_ar50_summary.csv) and [here](https://github.com/JamesSample/critical_loads_2/blob/master/cl_vestland/output/cl_vestland_nve_lakes_db_summary.csv), respectively
 
- * The completed data template from which critical loads have been calculated is [here](https://github.com/JamesSample/critical_loads_2/blob/master/cl_vestland/input_template_critical_loads_water_Samnanger.xlsx)
+ * The completed **data template** from which critical loads have been calculated is [here](https://github.com/JamesSample/critical_loads_2/blob/master/cl_vestland/input_template_critical_loads_water_Samnanger.xlsx)
  
  * Raster datasets representing **critical loads** parameters, **atmospheric deposition** and **exceedance** are [here](https://github.com/JamesSample/critical_loads_2/tree/master/cl_vestland/raster)
  
