@@ -8,11 +8,11 @@
 
 
 def view_dep_series(eng):
-    """ View table of deposition series already in the database.
-    
+    """View table of deposition series already in the database.
+
     Args:
         eng: Obj. Active database connection object
-        
+
     Returns:
         Dataframe.
     """
@@ -26,8 +26,8 @@ def view_dep_series(eng):
 
 
 def add_dep_series(series_id, name, short_name, grid, desc, eng):
-    """ Add new deposition series to the database.
-    
+    """Add new deposition series to the database.
+
     Args:
         series_id:  Int. Unique integer ID for series
         name:       Str. Full name for this series
@@ -35,7 +35,7 @@ def add_dep_series(series_id, name, short_name, grid, desc, eng):
         grid:       Str. One of ['blr', '0_1deg', 'emep']
         desc:       Str. Description of series
         eng:        Obj. Active database connection object
-         
+
     Returns:
         None. Row is added.
     """
@@ -74,17 +74,17 @@ def add_dep_series(series_id, name, short_name, grid, desc, eng):
 
 
 def upload_nilu_0_1deg_dep_data(data_fold, eng, series_id):
-    """ Process .dat files containing deposition data supplied by NILU. This 
-        function is based on the data supplied by NILU during 2017, which uses 
+    """Process .dat files containing deposition data supplied by NILU. This
+        function is based on the data supplied by NILU during 2017, which uses
         the new 0.1 degree deposition grid.
-    
+
     Args:
         dat_fold:  Str. Path to folder containing .dat files provided by NILU
         eng:       Obj. Active database connection object connect to the Docker
                    PostGIS db
-        series_id: Int. 'series_id' for this dataset from the table 
+        series_id: Int. 'series_id' for this dataset from the table
                    deposition.dep_series_defs
-        
+
     Returns:
         DataFrame of the data added to the database.
     """
@@ -154,9 +154,9 @@ def upload_nilu_0_1deg_dep_data(data_fold, eng, series_id):
 
 
 def extract_deposition_as_gdf(series_id, par, eng, veg_class=None):
-    """ Extracts deposition data for the specified series as a geodataframe.
-        
-    Args: 
+    """Extracts deposition data for the specified series as a geodataframe.
+
+    Args:
         series_id: Int. ID for deposition series of interest
         par:       Str. One of ['nitrogen', 'sulphur']
         eng:       Obj. Active database connection object
@@ -164,7 +164,7 @@ def extract_deposition_as_gdf(series_id, par, eng, veg_class=None):
                    reports deposition values for different vegetation classes.
                    For EMEP, must be one of ['grid average', 'forest', 'semi-natural'];
                    otherwise, pass None
-        
+
     Returns:
         GeoDataFrame.
     """
@@ -296,15 +296,15 @@ def create_deposition_raster(
     fname=None,
     veg_class=None,
 ):
-    """ Create a raster of deposition values from a Geodataframe. 
-        
+    """Create a raster of deposition values from a Geodataframe.
+
     Args:
         series_id: Int. ID for deposition series of interest
         par:       Str. One of ['nitrogen', 'sulphur']
         unit:      Str. One of ['mgpm2pyr', kgphapyr, 'meqpm2pyr']
         cell_size: Int. Output cell size in metres. Determines the "snap raster" to be used
                    One of (30, 60, 120)
-        eng:       Obj. Active database connection object    
+        eng:       Obj. Active database connection object
         ndv:       Int. Value to use for No Data
         bit_depth: Str. GDAL bit depth:
                        'Byte'
@@ -322,8 +322,8 @@ def create_deposition_raster(
 
                        shared/critical_loads/raster/deposition/short_name.tif
 
-                   where 'short_name' is as defined in the 'dep_series_defs' table.    
-        
+                   where 'short_name' is as defined in the 'dep_series_defs' table.
+
     Returns:
         None. The grid is saved to the specified path.
     """
@@ -371,10 +371,10 @@ def create_deposition_raster(
 
 
 def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type, fmt="GTiff"):
-    """ Converts a shapefile to a raster with values taken from
-        the 'attrib' field. The 'snap_tif' is used to set the 
+    """Converts a shapefile to a raster with values taken from
+        the 'attrib' field. The 'snap_tif' is used to set the
         resolution and extent of the output raster.
-        
+
     Args:
         in_shp:    Str. Raw string to shapefile
         out_tif:   Str. Raw string for geotiff to create
@@ -391,7 +391,7 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type, fmt="GTiff"):
                         'Float32'
                         'Float64'
         fmt:       Str. Format string.
-        
+
     Returns:
         None. Raster is saved.
     """
@@ -445,10 +445,10 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type, fmt="GTiff"):
 
 
 def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
-    """ Reclassify categorical values in a raster using a mapping
+    """Reclassify categorical values in a raster using a mapping
         in a dataframe. The dataframe index must contain the classes
         in in_tif and the 'reclass_col' must specify the new classes.
-        
+
         Only cells with value=1 in 'mask_tif' are written to output.
 
     Args:
@@ -458,7 +458,7 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
         reclass_df:  DataFrame. Reclassification table
         reclass_col: Str. Name of column with new raster values
         ndv:         Int. Value to use as NoData in the new raster
-        
+
     Returns:
         None. A new raster is saved.
     """
@@ -502,8 +502,8 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
 
 
 def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_id):
-    """ Calculate exceedances for vegetation.
-    
+    """Calculate exceedances for vegetation.
+
     Args:
         dep_tif:     Str. Raw string to deposition grid
         cl_tif:      Str. Raw string to critical loads grid
@@ -511,7 +511,7 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_
         ex_tif_bool: Str. Raw string to exceedance grid with Boolean values (i.e. 1
                      where exceeded and 0 otherwise)
         ser_id:      Int. Deposition series ID for the data of interest
-        
+
     Returns:
         Summary dataframe.
     """
@@ -520,8 +520,6 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_
     import numpy as np
     import gdal
 
-    # Check series ID is compatible
-    assert ser_id > 27, ""
     # Container for output
     data_dict = {"total_area_km2": [], "exceeded_area_km2": []}
 
@@ -600,9 +598,9 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_
 
 
 def write_geotiff(data, out_tif, snap_tif, ndv, data_type):
-    """ Write a numpy array to a geotiff using 'snap_tif' to define
+    """Write a numpy array to a geotiff using 'snap_tif' to define
         raster properties.
-    
+
     Args:
         data:      Array.
         out_tif:   Str. File to create
@@ -610,9 +608,9 @@ def write_geotiff(data, out_tif, snap_tif, ndv, data_type):
                    and extent as target
         ndv:       Int. No data value
         data_type: Bit depth etc. e.g. gdal.GDT_UInt32
-        
+
     Returns:
-        None. Geotiff is saved.        
+        None. Geotiff is saved.
     """
     from osgeo import ogr
     from osgeo import gdal
@@ -643,11 +641,11 @@ def write_geotiff(data, out_tif, snap_tif, ndv, data_type):
 
 
 def bbox_to_pixel_offsets(gt, bbox):
-    """ Helper function for zonal_stats(). Modified from:
+    """Helper function for zonal_stats(). Modified from:
 
-        https://gist.github.com/perrygeo/5667173
+    https://gist.github.com/perrygeo/5667173
 
-        Original code copyright 2013 Matthew Perry
+    Original code copyright 2013 Matthew Perry
     """
     originX = gt[0]
     originY = gt[3]
@@ -666,13 +664,12 @@ def bbox_to_pixel_offsets(gt, bbox):
 
 
 def remap_categories(category_map, stats):
-    """ Modified from https://gist.github.com/perrygeo/5667173
-        Original code copyright 2013 Matthew Perry
+    """Modified from https://gist.github.com/perrygeo/5667173
+    Original code copyright 2013 Matthew Perry
     """
 
     def lookup(m, k):
-        """ Dict lookup but returns original key if not found
-        """
+        """Dict lookup but returns original key if not found"""
         try:
             return m[k]
         except KeyError:
@@ -691,7 +688,7 @@ def exceedance_stats_per_0_1deg_cell(
     categorical=False,
     category_map=None,
 ):
-    """ Summarise exceedance values for each 0.1 degree grid cell. 
+    """Summarise exceedance values for each 0.1 degree grid cell.
 
     Args:
         raster_path:       Raw str. Path to exceedance raster
@@ -728,7 +725,8 @@ def exceedance_stats_per_0_1deg_cell(
     # Read vector
     temp_fold = os.path.split(ex_tif)[0]
     temp_shp = os.path.join(temp_fold, "temp.shp")
-    gdf = n_deposition_as_gdf_0_1deg(ser_id, eng, shp_path=temp_shp)
+    gdf = extract_deposition_as_gdf(ser_id, "nitrogen", eng, veg_class="grid_average")
+    gdf.to_file(temp_shp)
 
     # Read raster
     rds = gdal.Open(ex_tif, GA_ReadOnly)
@@ -863,7 +861,18 @@ def exceedance_stats_per_0_1deg_cell(
     gdf["exceeded_area_km2"] = gdf["exceeded"] * cs * cs / 1e6
     gdf["total_area_km2"] = (gdf["exceeded"] + gdf["not_exceeded"]) * cs * cs / 1e6
     gdf["pct_exceeded"] = 100 * gdf["exceeded_area_km2"] / gdf["total_area_km2"]
-    del gdf["n_dep"], gdf["fid"], gdf["exceeded"], gdf["not_exceeded"]
+    gdf.drop(
+        [
+            "fid",
+            "exceeded",
+            "not_exceeded",
+            "ndep_mgpm2pyr",
+            "ndep_meqpm2pyr",
+            "ndep_kgphapyr",
+        ],
+        axis="columns",
+        inplace=True,
+    )
     gdf.dropna(how="any", inplace=True)
 
     if write_to_db:
@@ -886,7 +895,7 @@ def exceedance_stats_per_0_1deg_cell(
 def exceedance_stats_per_land_use_class(
     ex_tif_bool, veg_tif, ser_id, eng, write_to_db=True, nodata_value=255
 ):
-    """ Summarise exceedance values for each land use class. 
+    """Summarise exceedance values for each land use class.
 
     Args:
         ex_tif_bool:       Raw str. Path to boolean exceedance raster
@@ -994,15 +1003,15 @@ def exceedance_stats_per_land_use_class(
 
 
 def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
-    """ Extracts exceedance statistics for the specified series as a 
+    """Extracts exceedance statistics for the specified series as a
         geodataframe using NILU's 0.1 degree grid. Optionally, the data
         can be saved as a shapefile.
-        
-    Args: 
+
+    Args:
         ser_id:   Int. ID for deposition series of interest
         eng:      Obj. Active database connection object
         shp_path: Str. Raw path for shapefile to be created
-        
+
     Returns:
         GeoDataFrame.
     """
@@ -1034,26 +1043,26 @@ def veg_exceedance_as_gdf_0_1deg(ser_id, eng, shp_path=None):
 
 
 def calc_anclimit_cla_clminmax(df, bc0):
-    """ Calculates the ANC Limit, the CLA and the CLmin and CLmax values using
-        the specified version of BC0, both with and without a correction for organic 
+    """Calculates the ANC Limit, the CLA and the CLmin and CLmax values using
+        the specified version of BC0, both with and without a correction for organic
         acids).
-        
+
         Used by calculate_critical_loads_for_water()
-    
+
     Args:
         df:  Dataframe.
         bc0: Str. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
-        
+
     Returns:
-        Dataframe with new columns for 
-            
-            ['ANClimit_{bc0}', 
-             'ANClimitOAA_{bc0}', 
-             'CLA_{bc0}', 
-             'CLAOAA_{bc0}', 
-             'CLmaxS_{bc0}', 
-             'CLmaxSoaa_{bc0}', 
-             'CLmaxN_{bc0}', 
+        Dataframe with new columns for
+
+            ['ANClimit_{bc0}',
+             'ANClimitOAA_{bc0}',
+             'CLA_{bc0}',
+             'CLAOAA_{bc0}',
+             'CLmaxS_{bc0}',
+             'CLmaxSoaa_{bc0}',
+             'CLmaxN_{bc0}',
              'CLmaxNoaa_{bc0}',
             ]
     """
@@ -1104,30 +1113,30 @@ def calc_anclimit_cla_clminmax(df, bc0):
 def calculate_critical_loads_for_water(
     xl_path=None, req_df=None, opt_df=None, mag_df=None
 ):
-    """ Calculates critical loads for water based on values entered in an 
-        Excel template (input_template_critical_loads_water.xlsx) or from 
-        the database. See the Excel file for full details of the input 
+    """Calculates critical loads for water based on values entered in an
+        Excel template (input_template_critical_loads_water.xlsx) or from
+        the database. See the Excel file for full details of the input
         data requirements.
-        
-        You must provide EITHER the 'xl_path' OR the three separate 
+
+        You must provide EITHER the 'xl_path' OR the three separate
         dataframes - NOT BOTH.
-        
+
         This function performs broadly the same calculations as Tore's 'CL'
         and 'CALKBLR' packages in RESA2, but generalised to allow for more
         flexible input data. The original critical loads calculations were
-        implemented by Tore's 'cl.clcalculations' function, which has been 
+        implemented by Tore's 'cl.clcalculations' function, which has been
         documented by Kari:
-        
+
         K:\Avdeling\317 Klima- og miljømodellering\KAU\Focal Centre\Data\CL script 23032015_notes.docx
-        
+
         These notes form the basis for much of the code here.
-        
+
     Args:
         xl_path: Str. Path to completed copy the Excel input template
         req_df:  Dataframe of required parameters
         opt_df:  Dataframe of optional parameters
         mag_df:  Dataframe of magic parameters
-        
+
     Returns:
         Dataframe.
     """
@@ -1349,19 +1358,19 @@ def calculate_critical_loads_for_water(
 
 
 def rasterise_water_critical_loads(eng, cell_size=120):
-    """ Creates rasters of key critical loads parameters:
-    
+    """Creates rasters of key critical loads parameters:
+
             'claoaa', 'eno3', 'clminn', 'clmaxnoaa', 'clmaxsoaa', 'clmins'
-            
+
         based on water chemistry and model parameters per BLR grid square.
-        
+
     Args:
         eng:       Obj. Valid connection object for the 'critical_loads' database
         cell_size: Int. Resolution of output rasters
-        
+
     Returns:
         None. The rasters are written to the shared drive here:
-        
+
             shared/critical_loads/raster/water
     """
     import os
@@ -1407,18 +1416,18 @@ def rasterise_water_critical_loads(eng, cell_size=120):
         "CLmaxSoaa_meq/m2/yr",
     ]
     cl_df = cl_df[cols]
-    cl_df.columns = [i.split("_")[0].lower() for i in cl_df.columns]
+    cl_df.columns = [i.replace("/", "p").lower() for i in cl_df.columns]
 
     cl_df.dropna(how="any", inplace=True)
-    cl_df.rename({"region": "blr"}, axis="columns", inplace=True)
+    cl_df.rename({"region_id": "cell_id"}, axis="columns", inplace=True)
 
     # Add CLminS as 0
-    cl_df["clmins"] = 0
+    cl_df["clmins_meqpm2pyr"] = 0
 
     # Join to BLR spatial data
     blr_gdf = nivapy.da.read_postgis("deposition", "dep_grid_blr", eng)
-    blr_gdf = blr_gdf[["blr", "geom"]]
-    blr_gdf = blr_gdf.merge(cl_df, on="blr")
+    blr_gdf = blr_gdf[["cell_id", "geom"]]
+    blr_gdf = blr_gdf.merge(cl_df, on="cell_id")
 
     # Save temporary file
     blr_gdf.to_file("temp.geojson", driver="GeoJSON")
@@ -1429,7 +1438,14 @@ def rasterise_water_critical_loads(eng, cell_size=120):
     )
 
     # Rasterize each column
-    cols = ["claoaa", "eno3", "clminn", "clmaxnoaa", "clmaxsoaa", "clmins"]
+    cols = [
+        "claoaa_meqpm2pyr",
+        "eno3_flux_meqpm2pyr",
+        "clminn_meqpm2pyr",
+        "clmaxnoaa_meqpm2pyr",
+        "clmaxsoaa_meqpm2pyr",
+        "clmins_meqpm2pyr",
+    ]
     for col in cols:
         print(f"Rasterising {col}...")
         # Tiff to create
@@ -1444,15 +1460,15 @@ def rasterise_water_critical_loads(eng, cell_size=120):
     print("    shared/critical_loads/raster/water")
 
 
-def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
-    """ Calculate exceedances for water using the SSWC model.
-    
+def calculate_water_exceedance_sswc(ser_id, short_name, cell_size=120):
+    """Calculate exceedances for water using the SSWC model.
+
     Args:
         ser_id:     Int. Series ID for deposition data
         cell_size:  Int. Resolution of output rasters
-        year_range: Str. Used in naming output exceedance grid. e.g. '11-16'
+        short_name: Str. Used in naming output exceedance grid. e.g. '11-16'
                     for 2011 to 2016 data series
-    
+
     Returns:
         Dataframe summarising exceedances for water.
     """
@@ -1467,16 +1483,14 @@ def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
     )
 
     # Read grids
-    s_tif = f"/home/jovyan/shared/critical_loads/raster/deposition/sdep_12-16_{cell_size}m.tif"
+    s_tif = f"/home/jovyan/shared/critical_loads/raster/deposition/sdep_mgpm2pyr_{short_name}_{cell_size}m.tif"
     s_dep, s_ndv, epsg, extent = nivapy.spatial.read_raster(s_tif)
     s_dep = s_dep.astype(np.float32)
 
-    eno3_tif = f"/home/jovyan/shared/critical_loads/raster/water/eno3_{cell_size}m.tif"
+    eno3_tif = f"/home/jovyan/shared/critical_loads/raster/water/eno3_flux_meqpm2pyr_{cell_size}m.tif"
     eno3fl, eno3_ndv, epsg, extent = nivapy.spatial.read_raster(eno3_tif)
 
-    claoaa_tif = (
-        f"/home/jovyan/shared/critical_loads/raster/water/claoaa_{cell_size}m.tif"
-    )
+    claoaa_tif = f"/home/jovyan/shared/critical_loads/raster/water/claoaa_meqpm2pyr_{cell_size}m.tif"
     claoaa, cla_ndv, epsg, extent = nivapy.spatial.read_raster(claoaa_tif)
 
     # Set ndv
@@ -1484,7 +1498,7 @@ def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
     eno3fl[eno3fl == eno3_ndv] = np.nan
     claoaa[claoaa == cla_ndv] = np.nan
 
-    # Convert dep to meq/l
+    # Convert dep to meq
     s_dep = s_dep * 2 / 32.06
 
     # Get total area of non-NaN from dep grid
@@ -1501,7 +1515,7 @@ def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
     sswc_ex[sswc_ex < 0] = 0
 
     # Write geotif
-    sswc_tif = f"/home/jovyan/shared/critical_loads/raster/exceedance/sswc_ex_12-16_{cell_size}m.tif"
+    sswc_tif = f"/home/jovyan/shared/critical_loads/raster/exceedance/sswc_ex_meqpm2pyr_{short_name}_{cell_size}m.tif"
     write_geotiff(sswc_ex, sswc_tif, snap_tif, -1, gdal.GDT_Float32)
     del sswc_ex
 
@@ -1536,13 +1550,13 @@ def calculate_water_exceedance_sswc(ser_id, year_range, cell_size=120):
 
 
 def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
-    """ Calculates exceedances based on the methodology outlined by Max
+    """Calculates exceedances based on the methodology outlined by Max
         Posch in the ICP Mapping manual (section VII.4):
-        
+
         http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
-        
+
         NB: All units should be in eq/l.
-        
+
     Args:
         cln_min: Float. Parameter to define "critical load function" (see PDF)
         cln_max: Float. Parameter to define "critical load function" (see PDF)
@@ -1550,14 +1564,14 @@ def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
         cls_max: Float. Parameter to define "critical load function" (see PDF)
         dep_n:   Float. Total N deposition
         dep_s:   Float. Total (non-marine) S deposition
-        
+
     Returns:
         Tuple (ex_n, ex_s, reg_id)
-        
+
         ex_n and ex_s are the exceedances for N and S depositions dep_n and dep_s
-        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The 
-        overall exceedance is (ex_n + ex_s). 
-        
+        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The
+        overall exceedance is (ex_n + ex_s).
+
         reg_id is an integer region ID, as defined in Figure VII.3 of the PDF.
     """
     # Check inputs
@@ -1636,14 +1650,14 @@ def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
 
 
 def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
-    """ Vectorised version of exceed_ns_icpm(). Calculates exceedances based on 
-        the methodology outlined by Max Posch in the ICP Mapping manual (section 
+    """Vectorised version of exceed_ns_icpm(). Calculates exceedances based on
+        the methodology outlined by Max Posch in the ICP Mapping manual (section
         VII.4):
-        
+
         http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
-        
+
         NB: All units should be in meq/l.
-        
+
     Args:
         cln_min: Float array. Parameter to define "critical load function" (see PDF)
         cln_max: Float array. Parameter to define "critical load function" (see PDF)
@@ -1651,14 +1665,14 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
         cls_max: Float array. Parameter to define "critical load function" (see PDF)
         dep_n:   Float array. Total N deposition
         dep_s:   Float array. Total (non-marine) S deposition
-        
+
     Returns:
         Tuple of arrays (ex_n, ex_s, reg_id)
-        
+
         ex_n and ex_s are the exceedances for N and S depositions dep_n and dep_s
-        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The 
-        overall exceedance is (ex_n + ex_s). 
-        
+        and the CLF defined by (cln_min, cls_max) and (cln_max, cls_min). The
+        overall exceedance is (ex_n + ex_s).
+
         reg_id is an integer array of region IDs, as defined in Figure VII.3 of the PDF.
     """
     import numpy as np
