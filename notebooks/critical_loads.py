@@ -1357,49 +1357,77 @@ def calculate_critical_loads_for_water(
     return df
 
 
-def rasterise_water_critical_loads(eng, cell_size=120):
+def rasterise_water_critical_loads(
+    eng, out_fold, cell_size=120, bc0="BC0", req_df=None, opt_df=None, mag_df=None
+):
     """Creates rasters of key critical loads parameters:
 
-            'claoaa', 'eno3', 'clminn', 'clmaxnoaa', 'clmaxsoaa', 'clmins'
+            'claoaa', 'eno3', 'clminn', 'clmaxnoaa', 'clmaxsoaa', 'clmins',
+            'anclimit', 'anclimit_oaa', 'bc0'
 
-        based on water chemistry and model parameters per BLR grid square.
+        using the specified water chemistry, model parameters per BLR grid square, and BC0 method.
 
     Args:
         eng:       Obj. Valid connection object for the 'critical_loads' database
+        out_fold:  Raw str. Folder in which to save grids
         cell_size: Int. Resolution of output rasters
+        bc0:       Str. BC0 method to use. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
+        req_df:    Dataframe of required parameters or None
+        opt_df:    Dataframe of optional parameters or None
+        mag_df:    Dataframe of magic parameters or None
 
     Returns:
-        None. The rasters are written to the shared drive here:
-
-            shared/critical_loads/raster/water
+        None. The rasters are written to the specified folder.
     """
     import os
     import pandas as pd
     import geopandas as gpd
     import nivapy3 as nivapy
 
-    # Read data from db
-    par_df = pd.read_sql(
-        "SELECT id as parameter_id, name, class FROM water.parameter_definitions", eng
-    )
-    req_df = pd.read_sql("SELECT * FROM water.blr_required_parameters", eng)
+    assert bc0 in [
+        "BC0",
+        "BC0_Ffac",
+        "BC0_magic",
+    ], "'bc0' must be one of ['BC0', 'BC0_Ffac', 'BC0_magic']."
 
-    # Restructure
-    req_df = pd.merge(req_df, par_df, how="left", on="parameter_id")
+    if (mag_df is not None) and (bc0 != "BC0_magic"):
+        print(
+            f"WARNING: You have supplied 'mag_df', but BC0 is '{bc0}'. Magic parameters will be ignored.\n"
+            "         Are you sure you don't mean 'BC0_magic' instead?\n"
+        )
 
-    del req_df["parameter_id"], req_df["class"]
-    req_df = req_df.pivot(index="region_id", columns="name", values="value")
-    req_df.index.name = "Region_id"
-    req_df.reset_index(inplace=True)
-    req_df.columns.name = ""
+    if (bc0 == "BC0_magic") and (mag_df is None):
+        raise ValueError(
+            "To use 'BC0_magic' you must supply 'mag_df'. This probably means filling in the Excel template."
+        )
 
-    # Create empty dataframes with correct cols for MAGIC and 'optional' parameters
-    # (There are not used in the calculations below, but are expected by the CL function)
-    opt_cols = list(par_df[par_df["class"] == "optional"]["name"].values)
-    opt_df = pd.DataFrame(columns=["Region_id"] + opt_cols)
+    if req_df is None:
+        # Read data from db
+        par_df = pd.read_sql(
+            "SELECT id as parameter_id, name, class FROM water.parameter_definitions",
+            eng,
+        )
+        req_df = pd.read_sql("SELECT * FROM water.blr_required_parameters", eng)
 
-    mag_cols = list(par_df[par_df["class"] == "magic"]["name"].values)
-    mag_df = pd.DataFrame(columns=["Region_id"] + mag_cols)
+        # Restructure
+        req_df = pd.merge(req_df, par_df, how="left", on="parameter_id")
+        del req_df["parameter_id"], req_df["class"]
+        req_df = req_df.pivot(index="region_id", columns="name", values="value")
+        req_df.index.name = "Region_id"
+        req_df.reset_index(inplace=True)
+        req_df.columns.name = ""
+
+    if opt_df is None:
+        # Create empty dataframe with correct cols 'optional' parameters
+        # (There are not used in the calculations below, but are expected by the CL function)
+        opt_cols = list(par_df[par_df["class"] == "optional"]["name"].values)
+        opt_df = pd.DataFrame(columns=["Region_id"] + opt_cols)
+
+    if mag_df is None:
+        # Create empty dataframe with correct cols 'magic' parameters
+        # (There are not used in the calculations below, but are expected by the CL function)
+        mag_cols = list(par_df[par_df["class"] == "magic"]["name"].values)
+        mag_df = pd.DataFrame(columns=["Region_id"] + mag_cols)
 
     # Calculate critical loads
     cl_df = calculate_critical_loads_for_water(
@@ -1407,16 +1435,22 @@ def rasterise_water_critical_loads(eng, cell_size=120):
     )
 
     # Get just cols of interest
+    bc0_dict = {"BC0": "", "BC0_Ffac": "FFac_", "BC0_magic": "magic_"}
+    bc0 = bc0_dict[bc0]
     cols = [
         "Region_id",
-        "CLAOAA_meq/m2/yr",
+        f"CLAOAA_{bc0}meq/m2/yr",
         "ENO3_flux_meq/m2/yr",
         "CLminN_meq/m2/yr",
-        "CLmaxNoaa_meq/m2/yr",
-        "CLmaxSoaa_meq/m2/yr",
+        f"CLmaxNoaa_{bc0}meq/m2/yr",
+        f"CLmaxSoaa_{bc0}meq/m2/yr",
+        f"ANClimit_{bc0}ueq/l",
+        f"ANClimitOAA_{bc0}ueq/l",
+        f"BC0_{bc0}ueq/l",
     ]
     cl_df = cl_df[cols]
-    cl_df.columns = [i.replace("/", "p").lower() for i in cl_df.columns]
+    cols = [i.replace("/", "p").lower() for i in cols]
+    cl_df.columns = cols
 
     cl_df.dropna(how="any", inplace=True)
     cl_df.rename({"region_id": "cell_id"}, axis="columns", inplace=True)
@@ -1437,37 +1471,34 @@ def rasterise_water_critical_loads(eng, cell_size=120):
         f"/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
     )
 
-    # Rasterize each column
-    cols = [
-        "claoaa_meqpm2pyr",
-        "eno3_flux_meqpm2pyr",
-        "clminn_meqpm2pyr",
-        "clmaxnoaa_meqpm2pyr",
-        "clmaxsoaa_meqpm2pyr",
-        "clmins_meqpm2pyr",
-    ]
+    # Rasterize columns
+    cols.remove("region_id")
+    cols.append("clmins_meqpm2pyr")
     for col in cols:
         print(f"Rasterising {col}...")
         # Tiff to create
-        out_tif = (
-            f"/home/jovyan/shared/critical_loads/raster/water/{col}_{cell_size}m.tif"
-        )
+        out_tif = os.path.join(out_fold, f"{col}_{cell_size}m.tif")
         vec_to_ras("temp.geojson", out_tif, snap_tif, col, -9999, "Float32")
 
     # Delete temp file
     os.remove("temp.geojson")
     print("Rasters saved to:")
-    print("    shared/critical_loads/raster/water")
+    print(f"    {out_fold}")
 
 
-def calculate_water_exceedance_sswc(ser_id, short_name, cell_size=120):
+def calculate_water_exceedance_sswc(
+    ser_id, short_name, cl_fold, out_fold, cell_size=120, bc0="BC0"
+):
     """Calculate exceedances for water using the SSWC model.
 
     Args:
         ser_id:     Int. Series ID for deposition data
-        cell_size:  Int. Resolution of output rasters
         short_name: Str. Used in naming output exceedance grid. e.g. '11-16'
                     for 2011 to 2016 data series
+        cl_fold:    Str. Folder containing rasters of critical loads (from rasterise_water_critical_loads)
+        out_fold:   Str. Folder in which to create output raster
+        cell_size:  Int. Resolution of output rasters
+        bc0:        Str. BC0 method to use. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
 
     Returns:
         Dataframe summarising exceedances for water.
@@ -1476,6 +1507,13 @@ def calculate_water_exceedance_sswc(ser_id, short_name, cell_size=120):
     import numpy as np
     import nivapy3 as nivapy
     import gdal
+    import os
+
+    assert bc0 in [
+        "BC0",
+        "BC0_Ffac",
+        "BC0_magic",
+    ], "'bc0' must be one of ['BC0', 'BC0_Ffac', 'BC0_magic']."
 
     # Snap tiff
     snap_tif = (
@@ -1487,10 +1525,18 @@ def calculate_water_exceedance_sswc(ser_id, short_name, cell_size=120):
     s_dep, s_ndv, epsg, extent = nivapy.spatial.read_raster(s_tif)
     s_dep = s_dep.astype(np.float32)
 
-    eno3_tif = f"/home/jovyan/shared/critical_loads/raster/water/eno3_flux_meqpm2pyr_{cell_size}m.tif"
+    eno3_tif = os.path.join(cl_fold, f"eno3_flux_meqpm2pyr_{cell_size}m.tif")
     eno3fl, eno3_ndv, epsg, extent = nivapy.spatial.read_raster(eno3_tif)
 
-    claoaa_tif = f"/home/jovyan/shared/critical_loads/raster/water/claoaa_meqpm2pyr_{cell_size}m.tif"
+    bc0_dict = {"BC0": "", "BC0_Ffac": "FFac_", "BC0_magic": "magic_"}
+    bc0 = bc0_dict[bc0]
+    claoaa_tif = os.path.join(cl_fold, f"claoaa_{bc0}meqpm2pyr_{cell_size}m.tif")
+
+    if not os.path.exists(claoaa_tif):
+        print(f"WARNING: Could not find file:")
+        print(f"    {claoaa_tif}")
+        print("Make sure the 'bc0' arg is set correctly.")
+
     claoaa, cla_ndv, epsg, extent = nivapy.spatial.read_raster(claoaa_tif)
 
     # Set ndv
@@ -1515,7 +1561,9 @@ def calculate_water_exceedance_sswc(ser_id, short_name, cell_size=120):
     sswc_ex[sswc_ex < 0] = 0
 
     # Write geotif
-    sswc_tif = f"/home/jovyan/shared/critical_loads/raster/exceedance/sswc_ex_meqpm2pyr_{short_name}_{cell_size}m.tif"
+    sswc_tif = os.path.join(
+        out_fold, f"sswc_ex_meqpm2pyr_{short_name}_{cell_size}m.tif"
+    )
     write_geotiff(sswc_ex, sswc_tif, snap_tif, -1, gdal.GDT_Float32)
     del sswc_ex
 
