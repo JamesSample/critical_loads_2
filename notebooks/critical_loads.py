@@ -1217,9 +1217,15 @@ def calculate_critical_loads_for_water(
     for col in units_dict.keys():
         df[col] = df[col] * units_dict[col]
 
-    # Apply sea-salt correction
+    # Apply sea-salt correction for required pars
     for col in cl_ratios.keys():
         df[col] = df[col] - (df["Cl"] * cl_ratios[col])
+        df.loc[df[col] < 0, col] = 0  # Set negative values to zero
+
+    # Apply sea-salt correction for Magic pars
+    for col in ["Ca_magic", "Mg_magic", "Na_magic", "K_magic"]:
+        par = col.split("_")[0]
+        df[col] = df[col] - (df["Cl_magic"] * cl_ratios[par])
         df.loc[df[col] < 0, col] = 0  # Set negative values to zero
 
     # Nitrate flux
@@ -1601,7 +1607,7 @@ def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     """Calculates exceedances based on the methodology outlined by Max
         Posch in the ICP Mapping manual (section VII.4):
 
-        http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
+        https://www.umweltbundesamt.de/sites/default/files/medien/4292/dokumente/ch7-mapman-2016-04-26.pdf
 
         NB: All units should be in eq/l.
 
@@ -1702,7 +1708,7 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
         the methodology outlined by Max Posch in the ICP Mapping manual (section
         VII.4):
 
-        http://www.rivm.nl/media/documenten/cce/manual/binnenop17Juni/Ch7-MapMan-2016-04-26_vf.pdf
+        https://www.umweltbundesamt.de/sites/default/files/medien/4292/dokumente/ch7-mapman-2016-04-26.pdf
 
         NB: All units should be in meq/l.
 
@@ -1733,8 +1739,8 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     # Handle edge cases
     # CLF pars < 0
     mask = (cln_min < 0) | (cln_max < 0) | (cls_min < 0) | (cls_max < 0)
-    ex_n[mask] = -1
-    ex_s[mask] = -1
+    ex_n[mask] = np.nan
+    ex_s[mask] = np.nan
     reg_id[mask] = -1
     edited = mask.copy()  # Keep track of edited cells so we don't change them again
     # This is analagous to the original 'if' statement in
