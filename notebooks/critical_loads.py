@@ -1111,7 +1111,7 @@ def calc_anclimit_cla_clminmax(df, bc0):
 
 
 def calculate_critical_loads_for_water(
-    xl_path=None, req_df=None, opt_df=None, mag_df=None
+    xl_path=None, req_df=None, opt_df=None, mag_df=None, out_csv=None
 ):
     """Calculates critical loads for water based on values entered in an
         Excel template (input_template_critical_loads_water.xlsx) or from
@@ -1136,6 +1136,7 @@ def calculate_critical_loads_for_water(
         req_df:  Dataframe of required parameters
         opt_df:  Dataframe of optional parameters
         mag_df:  Dataframe of magic parameters
+        out_csv: Raw str. The final dataframe is saved to the specified path
 
     Returns:
         Dataframe.
@@ -1360,11 +1361,21 @@ def calculate_critical_loads_for_water(
     ]  # Add units to header
     df.columns = cols_units
 
+    if out_csv:
+        df.to_csv(out_csv, index=False)
+
     return df
 
 
 def rasterise_water_critical_loads(
-    eng, out_fold, cell_size=120, bc0="BC0", req_df=None, opt_df=None, mag_df=None
+    eng,
+    out_fold,
+    cell_size=120,
+    bc0="BC0",
+    req_df=None,
+    opt_df=None,
+    mag_df=None,
+    df_to_csv=False,
 ):
     """Creates rasters of key critical loads parameters:
 
@@ -1381,6 +1392,8 @@ def rasterise_water_critical_loads(
         req_df:    Dataframe of required parameters or None
         opt_df:    Dataframe of optional parameters or None
         mag_df:    Dataframe of magic parameters or None
+        df_to_csv: Bool. If True, the dataframe of critical loads is also written to
+                   'out_fold/critical_loads.csv'
 
     Returns:
         None. The rasters are written to the specified folder.
@@ -1436,9 +1449,15 @@ def rasterise_water_critical_loads(
         mag_df = pd.DataFrame(columns=["Region_id"] + mag_cols)
 
     # Calculate critical loads
-    cl_df = calculate_critical_loads_for_water(
-        req_df=req_df, opt_df=opt_df, mag_df=mag_df
-    )
+    if df_to_csv:
+        out_csv = os.path.join(out_fold, "critical_loads.csv")
+        cl_df = calculate_critical_loads_for_water(
+            req_df=req_df, opt_df=opt_df, mag_df=mag_df, out_csv=out_csv
+        )
+    else:
+        cl_df = calculate_critical_loads_for_water(
+            req_df=req_df, opt_df=opt_df, mag_df=mag_df
+        )
 
     # Get just cols of interest
     bc0_dict = {"BC0": "", "BC0_Ffac": "FFac_", "BC0_magic": "magic_"}
@@ -1493,18 +1512,19 @@ def rasterise_water_critical_loads(
 
 
 def calculate_water_exceedance_sswc(
-    ser_id, short_name, cl_fold, out_fold, cell_size=120, bc0="BC0"
+    ser_id, short_name, cl_fold, out_fold, cell_size=120, bc0="BC0", neg_to_zero=True
 ):
     """Calculate exceedances for water using the SSWC model.
 
     Args:
-        ser_id:     Int. Series ID for deposition data
-        short_name: Str. Used in naming output exceedance grid. e.g. '11-16'
-                    for 2011 to 2016 data series
-        cl_fold:    Str. Folder containing rasters of critical loads (from rasterise_water_critical_loads)
-        out_fold:   Str. Folder in which to create output raster
-        cell_size:  Int. Resolution of output rasters
-        bc0:        Str. BC0 method to use. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
+        ser_id:      Int. Series ID for deposition data
+        short_name:  Str. Used in naming output exceedance grid. e.g. '11-16'
+                     for 2011 to 2016 data series
+        cl_fold:     Str. Folder containing rasters of critical loads (from rasterise_water_critical_loads)
+        out_fold:    Str. Folder in which to create output raster
+        cell_size:   Int. Resolution of output rasters
+        bc0:         Str. BC0 method to use. One of ['BC0', 'BC0_Ffac', 'BC0_magic']
+        neg_to_zero: Bool. Whether to set negative values of exceedance to zero
 
     Returns:
         Dataframe summarising exceedances for water.
@@ -1563,8 +1583,9 @@ def calculate_water_exceedance_sswc(
     # Get total area exceeded
     ex_area = np.count_nonzero(sswc_ex > 0) * cell_size * cell_size / 1.0e6
 
-    # Set <0 to 0
-    sswc_ex[sswc_ex < 0] = 0
+    if neg_to_zero:
+        # Set <0 to 0
+        sswc_ex[sswc_ex < 0] = 0
 
     # Write geotif
     sswc_tif = os.path.join(
@@ -1643,7 +1664,10 @@ def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     # CLF pars < 0
     if (cln_min < 0) or (cln_max < 0) or (cls_min < 0) or (cls_max < 0):
         # Pars not valid
-        return (-1, -1, -1)
+        # Updated 07.11.2020. Values < 0  do not make sense, so were originally set to -1.
+        # This change is equivalent to setting values less than zero back to zero
+        # return (-1, -1, -1)
+        return (dep_n, dep_s, -1)
 
     # CL = 0
     if (cls_max == 0) and (cln_max == 0):
@@ -1739,8 +1763,12 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     # Handle edge cases
     # CLF pars < 0
     mask = (cln_min < 0) | (cln_max < 0) | (cls_min < 0) | (cls_max < 0)
-    ex_n[mask] = np.nan
-    ex_s[mask] = np.nan
+    # Updated 07.11.2020. Values < 0  do not make sense, so were originally set to NaN. This change is
+    # equivalent to setting values less than zero back to zero
+    # ex_n[mask] = np.nan
+    # ex_s[mask] = np.nan
+    ex_n[mask] = dep_n[mask]
+    ex_s[mask] = dep_s[mask]
     reg_id[mask] = -1
     edited = mask.copy()  # Keep track of edited cells so we don't change them again
     # This is analagous to the original 'if' statement in
