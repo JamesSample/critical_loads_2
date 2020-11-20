@@ -1420,12 +1420,14 @@ def rasterise_water_critical_loads(
             "To use 'BC0_magic' you must supply 'mag_df'. This probably means filling in the Excel template."
         )
 
+    # Read parameters table from db
+    par_df = pd.read_sql(
+        "SELECT id as parameter_id, name, class FROM water.parameter_definitions",
+        eng,
+    )
+
     if req_df is None:
         # Read data from db
-        par_df = pd.read_sql(
-            "SELECT id as parameter_id, name, class FROM water.parameter_definitions",
-            eng,
-        )
         req_df = pd.read_sql("SELECT * FROM water.blr_required_parameters", eng)
 
         # Restructure
