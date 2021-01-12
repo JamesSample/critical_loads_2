@@ -1571,6 +1571,9 @@ def calculate_water_exceedance_sswc(
     s_dep[s_dep == s_ndv] = np.nan
     eno3fl[eno3fl == eno3_ndv] = np.nan
     claoaa[claoaa == cla_ndv] = np.nan
+    
+    # Set negative to zero
+    claoaa[claoaa < 0] = 0
 
     # Convert dep to meq
     s_dep = s_dep * 2 / 32.06
