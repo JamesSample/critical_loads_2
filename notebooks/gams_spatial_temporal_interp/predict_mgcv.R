@@ -29,7 +29,7 @@ if ((model_type == "tensor") && (par == "TOC_mgpl")) {
 }
 
 # Predict grid points (with std. errs.)
-preds <- predict.gam(model, grid_df_yr, se.fit = TRUE)
+preds <- predict.gam(model, grid_df_yr, se.fit = TRUE, , type = "response")
 grid_df_yr$predicted <- preds$fit
 grid_df_yr$stderr <- preds$se.fit
 

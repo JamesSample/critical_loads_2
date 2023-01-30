@@ -90,6 +90,7 @@ def upload_nilu_0_1deg_dep_data(data_fold, eng, series_id):
     """
     import glob
     import os
+
     import pandas as pd
 
     # Read NILU data
@@ -168,8 +169,9 @@ def extract_deposition_as_gdf(series_id, par, eng, veg_class=None):
     Returns:
         GeoDataFrame.
     """
-    import geopandas as gpd
     import warnings
+
+    import geopandas as gpd
     from sqlalchemy.sql import text
 
     veg_class_dict = {"grid average": 1, "forest": 2, "semi-natural": 3}
@@ -327,8 +329,9 @@ def create_deposition_raster(
     Returns:
         None. The grid is saved to the specified path.
     """
-    import geopandas as gpd
     import os
+
+    import geopandas as gpd
     from sqlalchemy.sql import text
 
     assert unit in (
@@ -395,8 +398,8 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type, fmt="GTiff"):
     Returns:
         None. Raster is saved.
     """
-    import ogr
     import gdal
+    import ogr
 
     # Bit depth dict
     bit_dict = {
@@ -463,10 +466,10 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
         None. A new raster is saved.
     """
     import gdal
-    import ogr
-    from gdalconst import GA_ReadOnly as GA_ReadOnly
     import numpy as np
+    import ogr
     import pandas as pd
+    from gdalconst import GA_ReadOnly as GA_ReadOnly
 
     # Open source file, read data
     src_ds = gdal.Open(in_tif, GA_ReadOnly)
@@ -515,10 +518,10 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_
     Returns:
         Summary dataframe.
     """
-    import nivapy3 as nivapy
-    import pandas as pd
-    import numpy as np
     import gdal
+    import nivapy3 as nivapy
+    import numpy as np
+    import pandas as pd
 
     # Container for output
     data_dict = {"total_area_km2": [], "exceeded_area_km2": []}
@@ -612,8 +615,7 @@ def write_geotiff(data, out_tif, snap_tif, ndv, data_type):
     Returns:
         None. Geotiff is saved.
     """
-    from osgeo import ogr
-    from osgeo import gdal
+    from osgeo import gdal, ogr
 
     # 1. Create new, empty raster with correct dimensions
     # Get properties from snap_tif
@@ -711,13 +713,14 @@ def exceedance_stats_per_0_1deg_cell(
     Returns:
         GeoDataFrame of cell statistics.
     """
-    import gdal
-    import ogr
-    import numpy as np
-    import pandas as pd
-    import sys
-    import geopandas as gpd
     import os
+    import sys
+
+    import gdal
+    import geopandas as gpd
+    import numpy as np
+    import ogr
+    import pandas as pd
     from gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
@@ -908,13 +911,14 @@ def exceedance_stats_per_land_use_class(
     Returns:
         GeoDataFrame of land use statistics.
     """
-    import gdal
-    import ogr
-    import numpy as np
-    import pandas as pd
-    import sys
-    import geopandas as gpd
     import os
+    import sys
+
+    import gdal
+    import geopandas as gpd
+    import numpy as np
+    import ogr
+    import pandas as pd
     from gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
@@ -1141,8 +1145,8 @@ def calculate_critical_loads_for_water(
     Returns:
         Dataframe.
     """
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     # Check input
     if xl_path and (req_df is not None or mag_df is not None or opt_df is not None):
@@ -1399,9 +1403,10 @@ def rasterise_water_critical_loads(
         None. The rasters are written to the specified folder.
     """
     import os
-    import pandas as pd
+
     import geopandas as gpd
     import nivapy3 as nivapy
+    import pandas as pd
 
     assert bc0 in [
         "BC0",
@@ -1531,11 +1536,12 @@ def calculate_water_exceedance_sswc(
     Returns:
         Dataframe summarising exceedances for water.
     """
-    import pandas as pd
-    import numpy as np
-    import nivapy3 as nivapy
-    import gdal
     import os
+
+    import gdal
+    import nivapy3 as nivapy
+    import numpy as np
+    import pandas as pd
 
     assert bc0 in [
         "BC0",
@@ -1571,7 +1577,7 @@ def calculate_water_exceedance_sswc(
     s_dep[s_dep == s_ndv] = np.nan
     eno3fl[eno3fl == eno3_ndv] = np.nan
     claoaa[claoaa == cla_ndv] = np.nan
-    
+
     # Set negative to zero
     claoaa[claoaa < 0] = 0
 
@@ -1721,7 +1727,7 @@ def exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
 
     else:
         # Region 3
-        dd = dn ** 2 + ds ** 2
+        dd = dn**2 + ds**2
         s = dep_n * dn + dep_s * ds
         v = cln_max * ds - cls_min * dn
         xf = (dn * s + ds * v) / dd
@@ -1834,7 +1840,7 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     edited += mask
 
     # Region 3 (anything not already edited)
-    dd = dn ** 2 + ds ** 2
+    dd = dn**2 + ds**2
     s = dep_n * dn + dep_s * ds
     v = cln_max * ds - cls_min * dn
     xf = (dn * s + ds * v) / dd
@@ -1846,3 +1852,134 @@ def vectorised_exceed_ns_icpm(cln_min, cln_max, cls_min, cls_max, dep_n, dep_s):
     del mask, edited, dd, s, v, xf, yf, dn, ds
 
     return (ex_n, ex_s, reg_id)
+
+
+def read_orig_blr_data(eng, dropna=False):
+    """Reads the original BLR data for water critical loads from the
+    database.
+
+    Args
+        eng:    Obj. Database engine object
+        dropna: Bool. Default False. Whether to drop rows containing NaN
+
+    Returns
+        Tuple of dataframe (req_df, opt_df, mag_df). The last two are
+        blank, but have the ocrrect column headings for adding new data,
+        if desired.
+    """
+    import pandas as pd
+
+    # Read parameters table from db
+    par_df = pd.read_sql(
+        "SELECT id as parameter_id, name, class FROM water.parameter_definitions",
+        eng,
+    )
+
+    # Read data from db
+    req_df = pd.read_sql("SELECT * FROM water.blr_required_parameters", eng)
+
+    # Restructure
+    req_df = pd.merge(req_df, par_df, how="left", on="parameter_id")
+    del req_df["parameter_id"], req_df["class"]
+    req_df = req_df.pivot(index="region_id", columns="name", values="value")
+    req_df.index.name = "Region_id"
+    req_df.reset_index(inplace=True)
+    req_df.columns.name = ""
+
+    # Create empty dataframe with correct cols 'optional' parameters
+    # (There are not used in the calculations below, but are expected by the CL function)
+    opt_cols = list(par_df[par_df["class"] == "optional"]["name"].values)
+    opt_df = pd.DataFrame(columns=["Region_id"] + opt_cols)
+
+    # Create empty dataframe with correct cols 'magic' parameters
+    # (There are not used in the calculations below, but are expected by the CL function)
+    mag_cols = list(par_df[par_df["class"] == "magic"]["name"].values)
+    mag_df = pd.DataFrame(columns=["Region_id"] + mag_cols)
+
+    if dropna:
+        req_df.dropna(how="any", inplace=True)
+        opt_df.dropna(how="any", inplace=True)
+        mag_df.dropna(how="any", inplace=True)
+
+    return (req_df, opt_df, mag_df)
+
+
+def update_required_pars(orig_req_df, new_blr_df, st_per, end_per):
+    """Update values in 'orig_req_df' with those from 'new_blr_df'. Values
+    for TOC and runoff are taken directly from 'new_blr_df', while NO3 is
+    calculated as the mean over the 5-year period from 'per_st' to 'per_end'.
+
+    Args
+        orig_req_df: Dataframe. Original data from database
+        new_blr_df:  Dataframe. Updated values for each BLR
+        st_per:      Int. Year at start of period
+        end_per:     Int. Year at end of period
+
+    Returns
+        Dataframe with updated values.
+    """
+    import pandas as pd
+
+    req_df = orig_req_df.copy()
+    blr_df = new_blr_df.copy()
+
+    cols = ["Region_id", "runoff_mmpyr", "TOC_mgpl_2019"]
+    df = blr_df[cols].copy()
+    if end_per > 2019:
+        no3_end = 2019
+    else:
+        no3_end = end_per
+    df["NO3_NO2_ugpl"] = blr_df[
+        [f"NO3_NO2_ugpl_{yi}" for yi in range(st_per, no3_end + 1)]
+    ].mean(axis="columns")
+    df.rename(
+        {
+            "runoff_mmpyr": "Runoff",
+            "TOC_mgpl_2019": "TOC",
+            "NO3_NO2_ugpl": "NO3N",
+        },
+        axis="columns",
+        inplace=True,
+    )
+    req_df.drop(["Runoff", "TOC", "NO3N"], axis="columns", inplace=True)
+    req_df = pd.merge(req_df, df, how="left", on="Region_id")
+
+    return req_df
+
+
+def estimate_optional_pars(req_df, new_blr_df):
+    """Estimate values for 'opt_df' based on data in 'new_blr_df'.
+
+    Args
+        req_df:      Dataframe. Required parameters for BLRs of
+                     interest
+        new_blr_df:  Dataframe. Updated values for each BLR
+
+    Returns
+        Dataframe in format required for 'opt_df'.
+    """
+    import numpy as np
+    import pandas as pd
+
+    req_df = req_df[["Region_id"]].copy()
+    opt_df = new_blr_df[["Region_id"]].copy()
+    opt_df["Catch_area"] = new_blr_df["Total_area_km2"]
+    opt_df["Lake_area"] = new_blr_df["Lake_area_km2"]
+    opt_df["Forest_area"] = new_blr_df["Forest_area_km2"]
+    opt_df["SN"] = np.nan
+    opt_df["SS"] = np.nan
+
+    # Denitrification TOC CHECK ###################################
+    opt_df["Fde"] = (
+        0.1 * new_blr_df["Forest_area_km2"]
+        + 0.1 * new_blr_df["Other_area_km2"]
+        + 0.8 * new_blr_df["Peat_area_km2"]
+    ) / new_blr_df["Total_area_km2"]
+
+    # TO DO #########################################################
+    opt_df["Ni"] = 3.57
+
+    # Join to match 'req_df'
+    opt_df = pd.merge(req_df, opt_df, how="left", on="Region_id")
+
+    return opt_df
