@@ -1169,8 +1169,11 @@ def calculate_critical_loads_for_water(
         "Catch_area": 1,
         "Lake_area": 0.05,
         "Forest_area": 0.95,
+        "Bare_area": 0,
+        "Peat_area": 0,
         "Ni": 3.57,
         "Fde": 0.1,
+        "Fde_peat": 0.8,
         "SN": 5,
         "SS": 0.5,
         "TOC": 1,
@@ -1236,14 +1239,15 @@ def calculate_critical_loads_for_water(
     # Nitrate flux
     df["ENO3_flux"] = df["Runoff"] * df["NO3N"]
 
-    # 'CLrat' is ratio of lake:catchment area
+    # Land cover proportions
     df["CLrat"] = df["Lake_area"] / df["Catch_area"]
-
-    # 'Ffor' is ratio of forest:catchment area
     df["Ffor"] = df["Forest_area"] / df["Catch_area"]
+    df["Fbare"] = df["Bare_area"] / df["Catch_area"]
+    df["Fpeat"] = df["Peat_area"] / df["Catch_area"]
 
     # 'Nimm' is the long-term annual immobilisation (accumulation) rate of N
-    df["Nimm"] = df["Ni"] * (1 - df["CLrat"])
+    # Applies to all areas that are not 'lake' or 'bare'
+    df["Nimm"] = df["Ni"] * (1 - df["CLrat"] - df["Fbare"])
 
     # If 'Lake_area' is 0, SN and SS should be zero, else use defaults of
     # 5 and 0.5, respectively
@@ -1280,13 +1284,20 @@ def calculate_critical_loads_for_water(
     # Lake transmission factors. For N, takes into account what is lost to denitrification
     # before the N reaches the lake
     df["alphaS"] = 1 - df["rhoS"]
-    df["alphaN"] = (1 - (df["Fde"] * (1 - df["CLrat"]))) * (1 - df["rhoN"])
+    df["alphaN"] = (
+        1
+        - (df["Fde"] * (1 - df["CLrat"] - df["Fpeat"] - df["Fbare"]))
+        - (df["Fde_peat"] * df["Fpeat"])
+    ) * (1 - df["rhoN"])
 
     # beta1 is the fraction of N available for uptake by the forest
     df["beta1"] = df["Ffor"] * (1 - df["Fde"]) * (1 - df["rhoN"])
 
     # beta2 the fraction of N available for immobilisation
-    df["beta2"] = (1 - df["Fde"]) * (1 - df["CLrat"]) * (1 - df["rhoN"])
+    df["beta2"] = (
+        ((1 - df["Fde"]) * (1 - df["CLrat"] - df["Fbare"] - df["Fpeat"]))
+        + ((1 - df["Fde_peat"]) * df["Fpeat"])
+    ) * (1 - df["rhoN"])
 
     # Calculate ANC limits, CLAs and CLmax & CLmin (using BC0, BC0_Ffac and BC0_magic, both with and without
     # corrections for organic acids)
@@ -1906,8 +1917,9 @@ def read_orig_blr_data(eng, dropna=False):
 
 def update_required_pars(orig_req_df, new_blr_df, st_per, end_per):
     """Update values in 'orig_req_df' with those from 'new_blr_df'. Values
-    for TOC and runoff are taken directly from 'new_blr_df', while NO3 is
-    calculated as the mean over the 5-year period from 'per_st' to 'per_end'.
+    for TOC and runoff are taken directly from 'new_blr_df'. For NO3, the
+    original values are kept for periods before 1992, otherwise a new series
+    is calculated as the mean over the 5-year period from 'per_st' to 'per_end'.
 
     Args
         orig_req_df: Dataframe. Original data from database
@@ -1925,13 +1937,14 @@ def update_required_pars(orig_req_df, new_blr_df, st_per, end_per):
 
     cols = ["Region_id", "runoff_mmpyr", "TOC_mgpl_2019"]
     df = blr_df[cols].copy()
-    if end_per > 2019:
-        no3_end = 2019
-    else:
-        no3_end = end_per
-    df["NO3_NO2_ugpl"] = blr_df[
-        [f"NO3_NO2_ugpl_{yi}" for yi in range(st_per, no3_end + 1)]
-    ].mean(axis="columns")
+
+    # Use old BLR NO3 before 1992, otherwise 5-year mean from new data
+    if st_per >= 1992:
+        df["NO3_NO2_ugpl"] = blr_df[
+            [f"NO3_NO2_ugpl_{yi}" for yi in range(st_per, end_per + 1)]
+        ].mean(axis="columns")
+
+    # Rename to match template
     df.rename(
         {
             "runoff_mmpyr": "Runoff",
@@ -1940,15 +1953,19 @@ def update_required_pars(orig_req_df, new_blr_df, st_per, end_per):
         },
         axis="columns",
         inplace=True,
+        errors="ignore",
     )
-    req_df.drop(["Runoff", "TOC", "NO3N"], axis="columns", inplace=True)
+
+    # Update req_df with new cols
+    to_drop = [col for col in df.columns if col != 'Region_id']
+    req_df.drop(to_drop, axis="columns", inplace=True)
     req_df = pd.merge(req_df, df, how="left", on="Region_id")
 
     return req_df
 
 
 def estimate_optional_pars(req_df, new_blr_df):
-    """Estimate values for 'opt_df' based on data in 'new_blr_df'.
+    """Add values for 'opt_df' based on data in 'new_blr_df'.
 
     Args
         req_df:      Dataframe. Required parameters for BLRs of
@@ -1963,21 +1980,20 @@ def estimate_optional_pars(req_df, new_blr_df):
 
     req_df = req_df[["Region_id"]].copy()
     opt_df = new_blr_df[["Region_id"]].copy()
+
+    # Use new values for land cover
     opt_df["Catch_area"] = new_blr_df["Total_area_km2"]
     opt_df["Lake_area"] = new_blr_df["Lake_area_km2"]
     opt_df["Forest_area"] = new_blr_df["Forest_area_km2"]
+    opt_df["Bare_area"] = new_blr_df["Bare_area_km2"]
+    opt_df["Peat_area"] = new_blr_df["Peat_area_km2"]
+
+    # Add remaining columns as NaN (i.e. use defaults from database)
+    opt_df["Ni"] = np.nan
+    opt_df["Fde"] = np.nan
+    opt_df["Fde_peat"] = np.nan
     opt_df["SN"] = np.nan
     opt_df["SS"] = np.nan
-
-    # Denitrification TOC CHECK ###################################
-    opt_df["Fde"] = (
-        0.1 * new_blr_df["Forest_area_km2"]
-        + 0.1 * new_blr_df["Other_area_km2"]
-        + 0.8 * new_blr_df["Peat_area_km2"]
-    ) / new_blr_df["Total_area_km2"]
-
-    # TO DO #########################################################
-    opt_df["Ni"] = 3.57
 
     # Join to match 'req_df'
     opt_df = pd.merge(req_df, opt_df, how="left", on="Region_id")
