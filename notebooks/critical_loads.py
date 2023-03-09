@@ -398,8 +398,7 @@ def vec_to_ras(in_shp, out_tif, snap_tif, attrib, ndv, data_type, fmt="GTiff"):
     Returns:
         None. Raster is saved.
     """
-    import gdal
-    import ogr
+    from osgeo import gdal, ogr
 
     # Bit depth dict
     bit_dict = {
@@ -465,9 +464,8 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
     Returns:
         None. A new raster is saved.
     """
-    import gdal
+    from osgeo import gdal, ogr
     import numpy as np
-    import ogr
     import pandas as pd
     from gdalconst import GA_ReadOnly as GA_ReadOnly
 
@@ -518,7 +516,7 @@ def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_
     Returns:
         Summary dataframe.
     """
-    import gdal
+    from osgeo import gdal, ogr
     import nivapy3 as nivapy
     import numpy as np
     import pandas as pd
@@ -716,10 +714,9 @@ def exceedance_stats_per_0_1deg_cell(
     import os
     import sys
 
-    import gdal
+    from osgeo import gdal, ogr
     import geopandas as gpd
     import numpy as np
-    import ogr
     import pandas as pd
     from gdalconst import GA_ReadOnly
 
@@ -914,10 +911,9 @@ def exceedance_stats_per_land_use_class(
     import os
     import sys
 
-    import gdal
+    from osgeo import gdal, ogr
     import geopandas as gpd
     import numpy as np
-    import ogr
     import pandas as pd
     from gdalconst import GA_ReadOnly
 
@@ -1549,7 +1545,7 @@ def calculate_water_exceedance_sswc(
     """
     import os
 
-    import gdal
+    from osgeo import gdal, ogr
     import nivapy3 as nivapy
     import numpy as np
     import pandas as pd
