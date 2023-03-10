@@ -467,7 +467,7 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
     from osgeo import gdal, ogr
     import numpy as np
     import pandas as pd
-    from gdalconst import GA_ReadOnly as GA_ReadOnly
+    from osgeo.gdalconst import GA_ReadOnly as GA_ReadOnly
 
     # Open source file, read data
     src_ds = gdal.Open(in_tif, GA_ReadOnly)
@@ -502,8 +502,9 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
     mask_ds = None
 
 
-def calc_vegetation_exceedance_0_1deg(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_id):
-    """Calculate exceedances for vegetation.
+def calc_vegetation_exceedance(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_id):
+    """Calculate exceedances for vegetation. 'dep_tif' and 'cl_tif' must have the same
+    extent, cell size, CRS etc.
 
     Args:
         dep_tif:     Str. Raw string to deposition grid
@@ -718,7 +719,7 @@ def exceedance_stats_per_0_1deg_cell(
     import geopandas as gpd
     import numpy as np
     import pandas as pd
-    from gdalconst import GA_ReadOnly
+    from osgeo.gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
 
@@ -915,7 +916,7 @@ def exceedance_stats_per_land_use_class(
     import geopandas as gpd
     import numpy as np
     import pandas as pd
-    from gdalconst import GA_ReadOnly
+    from osgeo.gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
 
