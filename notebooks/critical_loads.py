@@ -336,7 +336,8 @@ def create_deposition_raster(
 
     assert unit in (
         "mgpm2pyr",
-        "kgphapyr" "meqpm2pyr",
+        "kgphapyr",
+        "meqpm2pyr",
     ), "'unit' must be one of ('mgpm2pyr', 'kgphapyr', 'meqpm2pyr')."
 
     assert cell_size in (30, 60, 120), "'cell_size' must be one of (30, 60, 120)."
