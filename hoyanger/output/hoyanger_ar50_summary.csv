@@ -1,0 +1,35 @@
+station_id,station_code,artype,arveget,description,area_km2
+1285,EIR,50,51,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,20.876362862289923
+1285,EIR,50,52,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,24.8562860093512
+1285,EIR,50,54,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,4.286336516969586
+1285,EIR,50,55,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,13.143364572601225
+1285,EIR,50,99,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.2577201426028655
+1285,EIR,60,98,Myr: Areal som på overflata har preg av myr,0.0810779738259407
+1285,EIR,70,98,Bre: Is og snø som ikke smelter i løpet av sommeren,0.0895716095923533
+1285,EIR,81,98,Ferskvann: Elv og innsjø,8.374994664458551
+1286,GAU,30,98,Skog: Skogdekt areal,2.321248493111466
+1286,GAU,50,51,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.2079485005329622
+1286,GAU,50,52,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.32674781706277223
+1286,GAU,50,54,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.20679124166941837
+1286,GAU,50,55,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,2.8047015163310944
+1286,GAU,81,98,Ferskvann: Elv og innsjø,0.00239088550291427
+1287,HAA,10,98,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.22960742585504654
+1287,HAA,20,98,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",0.0785345474566825
+1287,HAA,30,98,Skog: Skogdekt areal,1.9078019668742503
+1287,HAA,50,52,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.20836825896535896
+1287,HAA,50,54,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.23200880657554496
+1287,HAA,50,55,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.906282253044232
+1287,HAA,60,98,Myr: Areal som på overflata har preg av myr,0.04537783427565452
+1287,HAA,81,98,Ferskvann: Elv og innsjø,0.0005068688345897682
+1288,HOY,10,98,"Bebygd: Boligfelt, tettsted, by, samferdsel, industriområde o.l.",0.8033763885047045
+1288,HOY,20,98,"Jordbruk: Fulldyrka jord, overflatedyrka jord og innmarksbeite",0.27883182534496687
+1288,HOY,30,98,Skog: Skogdekt areal,11.577739929971486
+1288,HOY,50,51,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,21.232577466937176
+1288,HOY,50,52,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,26.373312960649105
+1288,HOY,50,54,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,6.108684860068018
+1288,HOY,50,55,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,21.003486612226343
+1288,HOY,50,99,Snaumark: Fastmark med naturlig vegetasjonsdekke som ikke er skog,0.2815872304843867
+1288,HOY,60,98,Myr: Areal som på overflata har preg av myr,0.2862582790493748
+1288,HOY,70,98,Bre: Is og snø som ikke smelter i løpet av sommeren,0.08957160959304396
+1288,HOY,81,98,Ferskvann: Elv og innsjø,8.910504560631088
+1288,HOY,82,98,Hav,0.0005546345007392097
