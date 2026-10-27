@@ -66,7 +66,8 @@ def add_dep_series(series_id, name, short_name, grid, desc, eng):
     }
 
     sql = text(sql)
-    eng.execute(sql, param_dict)
+    with eng.begin() as conn:
+        conn.execute(sql, param_dict)
 
     print("Series added successfully.")
 
@@ -186,7 +187,8 @@ def extract_deposition_as_gdf(series_id, par, eng, veg_class=None):
     param_dict = {"series_id": series_id}
     sql = "SELECT grid FROM deposition.dep_series_defs " "WHERE series_id = :series_id"
     sql = text(sql)
-    grid = eng.execute(sql, param_dict).fetchall()[0][0]
+    with eng.connect() as conn:
+        grid = conn.execute(sql, param_dict).fetchall()[0][0]
 
     assert (
         grid is not None
@@ -317,14 +319,12 @@ def create_deposition_raster(
                        'Float32'
                        'Float64'
         fname:     Str or None. File path for output. If None, the raster will be saved to
+                       shared/critical_loads/raster/deposition/short_name.tif
+                   where 'short_name' is as defined in the 'dep_series_defs' table.
         veg_class: Str or None. Only applies for data using the EMEP grid, which
                    reports deposition values for different vegetation classes.
                    For EMEP, must be one of ['grid average', 'forest', 'semi-natural'];
                    otherwise, pass None
-
-                       shared/critical_loads/raster/deposition/short_name.tif
-
-                   where 'short_name' is as defined in the 'dep_series_defs' table.
 
     Returns:
         None. The grid is saved to the specified path.
@@ -352,20 +352,34 @@ def create_deposition_raster(
     col_name = f"{par[0]}dep_{unit}"
 
     if fname is None:
-        # Get short_name from db
-        param_dict = {"series_id": series_id}
-        sql = "SELECT short_name FROM deposition.dep_series_defs WHERE series_id = :series_id"
-        sql = text(sql)
-        res = eng.execute(sql, param_dict).fetchall()[0][0]
-        assert res is not None, (
-            "'short_name' is not defined for this series in the 'dep_series_defs' table.\n"
-            "Consider explicitly specifying a file name?"
+        sql = text(
+            """
+            SELECT short_name
+            FROM deposition.dep_series_defs
+            WHERE series_id = :series_id
+        """
         )
 
-        fname = f"/home/jovyan/shared/critical_loads/raster/deposition/{col_name}_{res}_{cell_size}m.tif"
+        with eng.connect() as conn:
+            short_name = conn.execute(
+                sql,
+                {"series_id": series_id},
+            ).scalar_one_or_none()
+
+        if short_name is None:
+            raise ValueError(
+                "'short_name' is not defined for this series in the "
+                "'dep_series_defs' table.\n"
+                "Consider explicitly specifying a file name?"
+            )
+
+        fname = (
+            f"/home/jovyan/shared/common/critical_loads/raster/deposition/"
+            f"{col_name}_{short_name}_{cell_size}m.tif"
+        )
 
     snap_tif = (
-        f"/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
+        f"/home/jovyan/shared/common/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
     )
 
     vec_to_ras("temp_ndep.geojson", fname, snap_tif, col_name, ndv, bit_depth)
@@ -465,9 +479,9 @@ def reclassify_raster(in_tif, mask_tif, out_tif, reclass_df, reclass_col, ndv):
     Returns:
         None. A new raster is saved.
     """
-    from osgeo import gdal, ogr
     import numpy as np
     import pandas as pd
+    from osgeo import gdal, ogr
     from osgeo.gdalconst import GA_ReadOnly as GA_ReadOnly
 
     # Open source file, read data
@@ -518,10 +532,10 @@ def calc_vegetation_exceedance(dep_tif, cl_tif, ex_tif, ex_tif_bool, ser_id):
     Returns:
         Summary dataframe.
     """
-    from osgeo import gdal, ogr
     import nivapy3 as nivapy
     import numpy as np
     import pandas as pd
+    from osgeo import gdal, ogr
 
     # Container for output
     data_dict = {"total_area_km2": [], "exceeded_area_km2": []}
@@ -716,10 +730,10 @@ def exceedance_stats_per_0_1deg_cell(
     import os
     import sys
 
-    from osgeo import gdal, ogr
     import geopandas as gpd
     import numpy as np
     import pandas as pd
+    from osgeo import gdal, ogr
     from osgeo.gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
@@ -913,10 +927,10 @@ def exceedance_stats_per_land_use_class(
     import os
     import sys
 
-    from osgeo import gdal, ogr
     import geopandas as gpd
     import numpy as np
     import pandas as pd
+    from osgeo import gdal, ogr
     from osgeo.gdalconst import GA_ReadOnly
 
     gdal.PushErrorHandler("CPLQuietErrorHandler")
@@ -1217,7 +1231,7 @@ def calculate_critical_loads_for_water(
 
     # Fill NaNs in params with defaults
     for col in default_vals.keys():
-        df[col].fillna(default_vals[col], inplace=True)
+        df[col] = df[col].fillna(default_vals[col])
 
     # Convert units
     for col in units_dict.keys():
@@ -1509,7 +1523,7 @@ def rasterise_water_critical_loads(
 
     # Snap tiff
     snap_tif = (
-        f"/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
+        f"/home/jovyan/shared/common/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
     )
 
     # Rasterize columns
@@ -1547,10 +1561,10 @@ def calculate_water_exceedance_sswc(
     """
     import os
 
-    from osgeo import gdal, ogr
     import nivapy3 as nivapy
     import numpy as np
     import pandas as pd
+    from osgeo import gdal, ogr
 
     assert bc0 in [
         "BC0",
@@ -1560,11 +1574,11 @@ def calculate_water_exceedance_sswc(
 
     # Snap tiff
     snap_tif = (
-        f"/home/jovyan/shared/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
+        f"/home/jovyan/shared/common/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
     )
 
     # Read grids
-    s_tif = f"/home/jovyan/shared/critical_loads/raster/deposition/sdep_mgpm2pyr_{short_name}_{cell_size}m.tif"
+    s_tif = f"/home/jovyan/shared/common/critical_loads/raster/deposition/sdep_mgpm2pyr_{short_name}_{cell_size}m.tif"
     s_dep, s_ndv, epsg, extent = nivapy.spatial.read_raster(s_tif)
     s_dep = s_dep.astype(np.float32)
 
@@ -1955,7 +1969,7 @@ def update_required_pars(orig_req_df, new_blr_df, st_per, end_per):
     )
 
     # Update req_df with new cols
-    to_drop = [col for col in df.columns if col != 'Region_id']
+    to_drop = [col for col in df.columns if col != "Region_id"]
     req_df.drop(to_drop, axis="columns", inplace=True)
     req_df = pd.merge(req_df, df, how="left", on="Region_id")
 
