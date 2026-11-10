@@ -373,10 +373,10 @@ def create_deposition_raster(
                 "Consider explicitly specifying a file name?"
             )
 
-        fname = (
-            f"/home/jovyan/shared/common/critical_loads/raster/deposition/"
-            f"{col_name}_{short_name}_{cell_size}m.tif"
-        )
+        tif_dir = f"/home/jovyan/shared/common/critical_loads/raster/deposition/{short_name}"
+        if not os.path.exists(tif_dir):
+            os.makedirs(tif_dir)
+        fname = os.path.join(tif_dir, f"{col_name}_{short_name}_{cell_size}m.tif")
 
     snap_tif = (
         f"/home/jovyan/shared/common/critical_loads/raster/blr_land_mask_{cell_size}m.tif"
@@ -1542,7 +1542,7 @@ def rasterise_water_critical_loads(
 
 
 def calculate_water_exceedance_sswc(
-    ser_id, short_name, cl_fold, out_fold, cell_size=120, bc0="BC0", neg_to_zero=True
+    ser_id, short_name, dep_fold, cl_fold, out_fold, cell_size=120, bc0="BC0", neg_to_zero=True
 ):
     """Calculate exceedances for water using the SSWC model.
 
@@ -1550,6 +1550,7 @@ def calculate_water_exceedance_sswc(
         ser_id:      Int. Series ID for deposition data
         short_name:  Str. Used in naming output exceedance grid. e.g. '11-16'
                      for 2011 to 2016 data series
+        dep_fold:    Str. Folder containing raster deposition data
         cl_fold:     Str. Folder containing rasters of critical loads (from rasterise_water_critical_loads)
         out_fold:    Str. Folder in which to create output raster
         cell_size:   Int. Resolution of output rasters
@@ -1578,7 +1579,7 @@ def calculate_water_exceedance_sswc(
     )
 
     # Read grids
-    s_tif = f"/home/jovyan/shared/common/critical_loads/raster/deposition/sdep_mgpm2pyr_{short_name}_{cell_size}m.tif"
+    s_tif = os.path.join(dep_fold, f"sdep_mgpm2pyr_{short_name}_{cell_size}m.tif")
     s_dep, s_ndv, epsg, extent = nivapy.spatial.read_raster(s_tif)
     s_dep = s_dep.astype(np.float32)
 
