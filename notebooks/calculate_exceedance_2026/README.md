@@ -1,6 +1,6 @@
 # Updating exceedances for water (November 2026)
 
-This notebook estimates exceedances for water for 2040 and 2050, based on data provided by NILU and EMEP.
+These notebooks estimate exceedances for water for 2040 and 2050, based on data provided by NILU and EMEP.
 
 ## Workflow overview
 
