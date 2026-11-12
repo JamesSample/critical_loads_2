@@ -20,7 +20,7 @@ New EMEP grids have been delivered as part of the GP review. Relevant grids are 
 
 ### 3. Bias correct and calculate exceedances
 
-In `critical_loads_2/notebooks/calculate_exceedance_2026/02_future_exceedance.ipynb`, deposition for 2040 and 2050 are estimated by calculating change factors compared EMEP-2015 and applying them to the NILU data for 2012-16 (0.1 degree grid; short name `1216`). Exceedances are then calculated using the bias-corrected deposition data and the critical loads grids for 2017-21 (based on data from met.no; short name `1721_blrgrid`).
+In `critical_loads_2/notebooks/calculate_exceedance_2026/02_future_exceedance.ipynb`, deposition for 2040 and 2050 are estimated by calculating change factors compared EMEP-2015 and applying them to the NILU data for 2012-16 (BLR grid, old method; short name `1216_old`). Exceedances are then calculated using the bias-corrected deposition data and the critical loads grids for 2017-21 (based on data from met.no; short name `1721_blrgrid`).
 
 ### 4. Maps and summaries
 
